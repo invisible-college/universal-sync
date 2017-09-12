@@ -1,0 +1,64 @@
+
+<body>
+<script src="./diff_lib.js"></script>
+<script>
+
+var uid = ('U' + Math.random()).replace(/\./, '')
+var Z = create_diffsyncZX2()
+
+var t = document.createElement('textarea')
+t.style.width = '100%'
+t.style.height = '100%'
+document.body.append(t)
+t.onkeyup = function () {
+    commit()
+}
+t.onpaste = function () {
+    setTimeout(function () {
+        commit()
+    }, 0)
+}
+
+var ws = new WebSocket('wss://invisible.college:60606')
+ws.onopen = function () {
+    ws.send(JSON.stringify({ channel : 'goop4' }))
+}
+
+ws.onmessage = function (event) {
+    var o = JSON.parse(event.data)
+    if (o.versions) {
+        merge(o.versions)
+    }
+}
+
+function commit() {
+    var c = diffsyncZX2_commit(Z, t.value, uid)
+    if (c) {
+        ws.send(JSON.stringify({ versions : c }))
+    }
+}
+
+function merge(new_vs) {
+    if (!new_vs) return;
+    commit()
+    diffsyncZX2_merge(Z, new_vs, uid)
+    var patch = get_diff_patch(t.value, Z.parents_text)
+    var range = [t.selectionStart, t.selectionEnd]
+    t.value = Z.parents_text
+	function adjust(x) {
+	    each(patch, function (p) {
+	        if (p[0] < x) {
+	            if (p[0] + p[1] <= x) {
+	                x += -p[1] + p[2].length
+	            } else {
+	                x = p[0] + p[2].length
+	            }
+	        } else return false
+	    })
+	    return x
+	}    
+    t.setSelectionRange(adjust(range[0]), adjust(range[1]))
+}
+
+</script>
+</body>
