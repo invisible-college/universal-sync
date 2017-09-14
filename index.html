@@ -4,7 +4,7 @@
 <script>
 
 var uid = ('U' + Math.random()).replace(/\./, '')
-var Z = create_diffsyncZX2()
+var Z = diff_lib.create_diffsyncZX2()
 
 var t = document.createElement('textarea')
 t.style.width = '100%'
@@ -32,7 +32,7 @@ ws.onmessage = function (event) {
 }
 
 function commit() {
-    var c = diffsyncZX2_commit(Z, t.value, uid)
+    var c = diff_lib.diffsyncZX2_commit(Z, t.value, uid)
     if (c) {
         ws.send(JSON.stringify({ versions : c }))
     }
@@ -41,8 +41,8 @@ function commit() {
 function merge(new_vs) {
     if (!new_vs) return;
     commit()
-    diffsyncZX2_merge(Z, new_vs, uid)
-    var patch = get_diff_patch(t.value, Z.parents_text)
+    diff_lib.diffsyncZX2_merge(Z, new_vs, uid)
+    var patch = diff_lib.get_diff_patch(t.value, Z.parents_text)
     var range = [t.selectionStart, t.selectionEnd]
     t.value = Z.parents_text
 	function adjust(x) {

@@ -285,6 +285,8 @@ function get_diff_patch(a, b) {
     return diff_convert_to_my_format(diff_main(a, b))
 }
 
+diff_lib.get_diff_patch = get_diff_patch
+
 /**
  * This library modifies the diff-patch-match library by Neil Fraser
  * by removing the patch and match functionality and certain advanced
