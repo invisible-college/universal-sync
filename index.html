@@ -5,6 +5,7 @@
 
 var uid = ('U' + Math.random()).replace(/\./, '')
 var Z = diff_lib.create_diffsyncZX2()
+var commit = function () {}
 
 var t = document.createElement('textarea')
 t.style.width = '100%'
@@ -19,46 +20,85 @@ t.onpaste = function () {
     }, 0)
 }
 
-var ws = new WebSocket('wss://invisible.college:60606')
-ws.onopen = function () {
-    ws.send(JSON.stringify({ channel : 'goop4' }))
-}
+function reconnect() {
+    console.log('reconnecting...')
+    var ws = new WebSocket('wss://invisible.college:60606')
 
-ws.onmessage = function (event) {
-    var o = JSON.parse(event.data)
-    if (o.versions) {
-        merge(o.versions)
+    ws.onopen = function () {
+        ws.send(JSON.stringify({ join : { channel : 'goop4', uid : uid } }))
+        on_pong()
+    }
+
+    ws.onclose = function () {
+        console.log('connection closed..')
+        if (ws) {
+            ws = null
+            reconnect()
+        }
+    }
+
+    var pong_timer = null
+    function on_pong() {
+        console.log('got pong!')
+
+        clearTimeout(pong_timer)
+        setTimeout(function () {
+            ws.send(JSON.stringify({ ping : true }))
+            pong_timer = setTimeout(function () {
+                console.log('no pong came!!')
+                if (ws) {
+                    ws = null
+                    reconnect()
+                }
+            }, 4000)
+        }, 3000)
+    }
+
+    function try_send(msg) {
+        try {
+            ws.send(msg)
+        } catch (e) {}
+    }
+
+    ws.onmessage = function (event) {
+        var o = JSON.parse(event.data)
+        if (o.versions) merge(o.versions)
+        if (o.pong) on_pong()
+        if (o.welcome) {
+            try_send(JSON.stringify({ versions : diff_lib.diffsyncZX2_my_newish_commits(Z, uid) }))
+        }
+    }
+
+    commit = function () {
+        var c = diff_lib.diffsyncZX2_commit(Z, t.value, uid)
+        if (c) {
+            try_send(JSON.stringify({ versions : c }))
+        }
+    }
+
+    function merge(new_vs) {
+        if (!new_vs) return;
+        commit()
+        diff_lib.diffsyncZX2_merge(Z, new_vs, uid)
+        var patch = diff_lib.get_diff_patch(t.value, Z.parents_text)
+        var range = [t.selectionStart, t.selectionEnd]
+        t.value = Z.parents_text
+        function adjust(x) {
+            each(patch, function (p) {
+                if (p[0] < x) {
+                    if (p[0] + p[1] <= x) {
+                        x += -p[1] + p[2].length
+                    } else {
+                        x = p[0] + p[2].length
+                    }
+                } else return false
+            })
+            return x
+        }    
+        t.setSelectionRange(adjust(range[0]), adjust(range[1]))
     }
 }
-
-function commit() {
-    var c = diff_lib.diffsyncZX2_commit(Z, t.value, uid)
-    if (c) {
-        ws.send(JSON.stringify({ versions : c }))
-    }
-}
-
-function merge(new_vs) {
-    if (!new_vs) return;
-    commit()
-    diff_lib.diffsyncZX2_merge(Z, new_vs, uid)
-    var patch = diff_lib.get_diff_patch(t.value, Z.parents_text)
-    var range = [t.selectionStart, t.selectionEnd]
-    t.value = Z.parents_text
-	function adjust(x) {
-	    each(patch, function (p) {
-	        if (p[0] < x) {
-	            if (p[0] + p[1] <= x) {
-	                x += -p[1] + p[2].length
-	            } else {
-	                x = p[0] + p[2].length
-	            }
-	        } else return false
-	    })
-	    return x
-	}    
-    t.setSelectionRange(adjust(range[0]), adjust(range[1]))
-}
+reconnect()
 
 </script>
 </body>

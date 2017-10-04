@@ -105,7 +105,6 @@ diff_lib.create_diffsyncZX2 = function () {
     self.versions = {}
     self.parents = []
     self.parents_text = ''
-    self.parents_merge_patch = null
     return self
 }
 
@@ -116,7 +115,6 @@ diff_lib.diffsyncZX2_commit = function (self, s, author) {
     new_commit[rid] = {
         parents : self.parents,
         diff : get_diff_patch(self.parents_text, s),
-        merge : self.parents_merge_patch,
         author : author
     }
     self.parents = [rid]
@@ -126,19 +124,35 @@ diff_lib.diffsyncZX2_commit = function (self, s, author) {
 }
 
 diff_lib.diffsyncZX2_merge = function (self, v, author) {
-    extend(self.versions, v)
+    each(v, function (v, k) {
+        if (!self.versions[k]) {
+            self.versions[k] = v
+        }
+    })
     self.parents = get_leaves(self.versions)
     self.parents_text = rec_merge(self.parents, self.versions)
-    // self.parents_merge_patch = (self.parents && self.parents.length > 1) ? get_merge_patch(self.parents_text, map_array(self.parents, function (x) { return get_text(x, self.versions) })) : null
     if (self.parents && self.parents.length == 1 && self.versions[self.parents[0]].author != author) {
-        self.versions[self.parents[0]].parents = null
         each(self.versions, function (v, k) {
             if (k != self.parents[0]) {
-                delete self.versions[k]
+                v.seen = true
+                delete v.text
             }
         })
     }
     return self.parents_text
+}
+
+diff_lib.diffsyncZX2_my_newish_commits = function (self, author) {
+    var c = {}
+    each(self.versions, function (v, k) {
+        if ((v.author == author) && !v.seen) {
+            c[k] = {}
+            c[k].parents = v.parents
+            c[k].diff = v.diff
+            c[k].author = v.author
+        }
+    })
+    return c
 }
 
 ///////////////
@@ -153,56 +167,6 @@ diff_lib.diffsyncZX2_merge = function (self, v, author) {
 
 // function get_merge_patch(merged, sources)
 // function apply_merge_patch(sources, patch)
-
-function get_longest_prefix_match(a, ai, b) {
-    var bestStart = 0
-    var bestLength = 0
-    var prefixes = []
-    for (var i = 0; i < b.length; i++) {
-        var bb = b[i]
-        prefixes.push(0)
-        for (var pi = prefixes.length - 1; pi >= 0; pi--) {
-            var aa = a[prefixes[pi] + ai]
-            if (aa == bb) {
-                prefixes[pi]++
-                if (prefixes[pi] > bestLength) {
-                    bestLength = prefixes[pi]
-                    bestStart = i - prefixes[pi] + 1
-                }
-            } else {
-                delete prefixes[pi]
-            }
-        }
-    }
-    return [bestStart, bestLength]
-}
-
-function get_merge_patch(merged, sources) {
-    var patch = []
-    var i = 0
-    while (i < merged.length) {
-        var bestMatch = [0, 0, 0]
-        for (var ii = 0; ii < sources.length; ii++) {
-            var m = get_longest_prefix_match(merged, i, sources[ii])
-            if (m[1] > bestMatch[2]) {
-                bestMatch = [ii, m[0], m[1]]
-            }
-        }
-        if (bestMatch[2] == 0) { return null }
-        patch.push(bestMatch)
-        i += bestMatch[2]
-    }
-    return patch
-}
-
-function apply_merge_patch(sources, patch) {
-    var accum = []
-    for (var i = 0; i < patch.length; i++) {
-        var p = patch[i]
-        accum.push(sources[p[0]].slice(p[1], p[1] + p[2]))
-    }
-    return accum.join('')
-}
 
 var DIFF_DELETE = -1;
 var DIFF_INSERT = 1;
