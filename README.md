@@ -1,2 +1,2 @@
 # diffsync
-..toward a simple collaborative editor widget for the web
+A simple collaborative editor widget for the web
