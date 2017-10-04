@@ -39,8 +39,6 @@ function reconnect() {
 
     var pong_timer = null
     function on_pong() {
-        console.log('got pong!')
-
         clearTimeout(pong_timer)
         setTimeout(function () {
             ws.send(JSON.stringify({ ping : true }))
