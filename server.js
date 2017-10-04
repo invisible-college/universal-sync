@@ -19,11 +19,12 @@ var each = function (o, cb) {
 console.log('version 1013')
 
 var diff_lib = require('./diff_lib.js')
+var bus = require('statebus')(); bus.file_store()
 
 var server_uid = ('U' + Math.random()).replace(/\./, '')
 
-var channel_versions = {}
-var users = {}
+var channel_versions = bus.fetch('channel_versions')
+var users            = bus.fetch('users')
 
 var fs = require('fs')
 var web_server = null
@@ -38,6 +39,7 @@ if (fs.existsSync('privkey.pem') && fs.existsSync('fullchain.pem')) {
 web_server.listen(60606)
 const WebSocket = require('ws');
 const wss = new WebSocket.Server({ server : web_server });
+const sockets = {}
 wss.on('connection', function connection(ws) {
     console.log('new connection')
 
@@ -55,7 +57,8 @@ wss.on('connection', function connection(ws) {
                 users[uid].Z = diff_lib.create_diffsyncZX2()
                 diff_lib.diffsyncZX2_commit(users[uid].Z, channel_versions[users[uid].channel] || '', server_uid)
             }
-            users[uid].ws = ws
+
+            sockets[uid] = ws
 
             try {
                 ws.send(JSON.stringify({ versions : diff_lib.diffsyncZX2_my_newish_commits(users[uid].Z, server_uid), welcome : true }))
@@ -71,8 +74,11 @@ wss.on('connection', function connection(ws) {
         if (o.close) {
             delete users[uid]
         }
+        bus.save(users)
     })
-
+    ws.on('close', () => {
+        delete sockets[uid]
+    })
     function merge(new_vs) {
         if (!new_vs) return;
         if (!uid) return;
@@ -83,18 +89,19 @@ wss.on('connection', function connection(ws) {
                 var c = diff_lib.diffsyncZX2_commit(u.Z, channel_versions[users[uid].channel], server_uid)
                 if (c) {
                     try {
-                        u.ws.send(JSON.stringify({ versions : c }))
+                        sockets[id].send(JSON.stringify({ versions : c }))
                     } catch (e) {}
                 }
             }
         })
+        bus.save(channel_versions)
     }
 
     function on_range(r) {
         each(users, function (u, id) {
             if (u.channel == users[uid].channel && id != uid) {
                 try {
-                    u.ws.send(JSON.stringify({ range : r }))
+                    sockets[id].send(JSON.stringify({ range : r }))
                 } catch (e) {}
             }
         })
