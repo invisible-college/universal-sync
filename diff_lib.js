@@ -155,6 +155,87 @@ diff_lib.diffsyncZX2_my_newish_commits = function (self, author) {
     return c
 }
 
+diff_lib.create_diffsyncZY2 = function (ws_url, channel, get_text, on_set_text, on_range) {
+    var self = {}
+    self.commit = null
+    self.update_range = null
+
+    var uid = ('U' + Math.random()).replace(/\./, '')
+    var Z = diff_lib.create_diffsyncZX2()
+    
+    function reconnect() {
+        console.log('reconnecting...')
+        var ws = new WebSocket(ws_url)
+    
+        ws.onopen = function () {
+            ws.send(JSON.stringify({ join : { channel : channel, uid : uid } }))
+            on_pong()
+        }
+    
+        ws.onclose = function () {
+            console.log('connection closed...')
+            if (ws) {
+                ws = null
+                reconnect()
+            }
+        }
+    
+        var pong_timer = null
+        function on_pong() {
+            clearTimeout(pong_timer)
+            setTimeout(function () {
+                ws.send(JSON.stringify({ ping : true }))
+                pong_timer = setTimeout(function () {
+                    console.log('no pong came!!')
+                    if (ws) {
+                        ws = null
+                        reconnect()
+                    }
+                }, 4000)
+            }, 3000)
+        }
+    
+        function try_send(msg) {
+            try {
+                ws.send(msg)
+            } catch (e) {}
+        }
+    
+        ws.onmessage = function (event) {
+            var o = JSON.parse(event.data)
+            if (o.versions) merge(o.versions)
+            if (o.pong) on_pong()
+            if (o.welcome) {
+                try_send(JSON.stringify({ versions : diff_lib.diffsyncZX2_my_newish_commits(Z, uid) }))
+            }
+            if (o.range && on_range) on_range(o.range)
+        }
+    
+        self.commit = function () {
+            var c = diff_lib.diffsyncZX2_commit(Z, get_text(), uid)
+            if (c) {
+                try_send(JSON.stringify({ versions : c }))
+            }
+        }
+        
+        self.update_range = function (r) {
+            r.author = uid
+            try_send(JSON.stringify({ range : r }))
+        }
+
+        function merge(new_vs) {
+            if (!new_vs) return;
+            self.commit()
+            diff_lib.diffsyncZX2_merge(Z, new_vs, uid)
+            var patch = get_diff_patch(get_text(), Z.parents_text)
+            on_set_text(Z.parents_text, patch)
+        }
+    }
+    reconnect()
+
+    return self
+}
+
 ///////////////
 
 
