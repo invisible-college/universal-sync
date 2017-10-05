@@ -155,7 +155,7 @@ diff_lib.diffsyncZX2_my_newish_commits = function (self, author) {
     return c
 }
 
-diff_lib.create_diffsyncZY2 = function (ws_url, channel, get_text, on_set_text, on_range) {
+diff_lib.create_diffsyncZY2 = function (ws_url, channel, get_text, get_range, on_text, on_range) {
     var self = {}
     self.commit = null
     self.update_range = null
@@ -202,6 +202,7 @@ diff_lib.create_diffsyncZY2 = function (ws_url, channel, get_text, on_set_text, 
         }
     
         ws.onmessage = function (event) {
+            if (!ws) return;
             var o = JSON.parse(event.data)
             if (o.versions) merge(o.versions)
             if (o.pong) on_pong()
@@ -218,9 +219,13 @@ diff_lib.create_diffsyncZY2 = function (ws_url, channel, get_text, on_set_text, 
             }
         }
         
-        self.update_range = function (r) {
-            r.author = uid
-            try_send(JSON.stringify({ range : r }))
+        self.update_range = function () {
+            try_send(JSON.stringify({
+                range : {
+                    author : uid,
+                    range : get_range()
+                }
+            }))
         }
 
         function merge(new_vs) {
@@ -228,7 +233,19 @@ diff_lib.create_diffsyncZY2 = function (ws_url, channel, get_text, on_set_text, 
             self.commit()
             diff_lib.diffsyncZX2_merge(Z, new_vs, uid)
             var patch = get_diff_patch(get_text(), Z.parents_text)
-            on_set_text(Z.parents_text, patch)
+            function adjust(x) {
+                each(patch, function (p) {
+                    if (p[0] < x) {
+                        if (p[0] + p[1] <= x) {
+                            x += -p[1] + p[2].length
+                        } else {
+                            x = p[0] + p[2].length
+                        }
+                    } else return false
+                })
+                return x
+            }
+            on_text(Z.parents_text, map_array(get_range(), adjust))
         }
     }
     reconnect()

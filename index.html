@@ -10,22 +10,11 @@ document.body.append(t)
 
 var ZY2 = diff_lib.create_diffsyncZY2('wss://invisible.college:60606', 'goop4', function () {
     return t.value
-}, function (text, patch) {
-    var range = [t.selectionStart, t.selectionEnd]
+}, function () {
+    return [t.selectionStart, t.selectionEnd]
+}, function (text, range) {
     t.value = text
-    function adjust(x) {
-        each(patch, function (p) {
-            if (p[0] < x) {
-                if (p[0] + p[1] <= x) {
-                    x += -p[1] + p[2].length
-                } else {
-                    x = p[0] + p[2].length
-                }
-            } else return false
-        })
-        return x
-    }    
-    t.setSelectionRange(adjust(range[0]), adjust(range[1]))
+    t.setSelectionRange(range[0], range[1])
 }, null)
 
 t.onkeyup = function () {
