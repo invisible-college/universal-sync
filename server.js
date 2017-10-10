@@ -16,7 +16,7 @@ var each = function (o, cb) {
   return true
 }
 
-console.log('version 1013')
+console.log('version 1014')
 
 var diff_lib = require('./diff_lib.js')
 var bus = require('statebus')(); bus.sqlite_store()
@@ -35,10 +35,14 @@ if (fs.existsSync('privkey.pem') && fs.existsSync('fullchain.pem')) {
         key : fs.readFileSync('privkey.pem'),
         cert : fs.readFileSync('fullchain.pem')
     })
+    console.log('openning https server..')
 } else {
     web_server = require('http').createServer()
+    console.log('openning http server..')
 }
-web_server.listen(60606)
+var port = 60606
+web_server.listen(port)
+console.log('..on port ' + port)
 const WebSocket = require('ws');
 const wss = new WebSocket.Server({ server : web_server });
 const sockets = {}
