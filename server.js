@@ -19,7 +19,9 @@ var each = function (o, cb) {
 console.log('version 1014')
 
 var diff_lib = require('./diff_lib.js')
-var bus = require('statebus')(); bus.sqlite_store()
+var bus = require('statebus')()
+//bus.sqlite_store()
+bus.file_store()
 
 var db = {}
 each(bus.cache, function(value, key){
