@@ -112,8 +112,11 @@ wss.on('connection', function connection(ws) {
     }
 
     function on_range(r) {
-        each(users, function (u, id) {
-            if (u.channel == users[uid].channel && id != uid) {
+        each(db, function (v, k) {
+            if (!k.startsWith('users/')){return}
+            var u = v
+            var id = u.id
+            if (u.channel == db['users/'+uid].channel && id != uid) {
                 try {
                     sockets[id].send(JSON.stringify({ range : r }))
                 } catch (e) {}
