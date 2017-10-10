@@ -97,7 +97,7 @@ wss.on('connection', function connection(ws) {
             if (!k.startsWith('users/')){return}
             var u = v
             var id = u.id
-            if (u.channel == users[uid].channel && id != uid) {
+            if (u.channel == db[user_key].channel && id != uid) {
                 var c = diff_lib.diffsyncZX2_commit(u.Z, db[key], server_uid)
                 if (c) {
                     try {
