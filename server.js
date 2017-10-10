@@ -98,7 +98,7 @@ wss.on('connection', function connection(ws) {
             var u = v
             var id = u.id
             if (u.channel == db[user_key].channel && id != uid) {
-                var c = diff_lib.diffsyncZX2_commit(u.Z, db[key], server_uid)
+                var c = diff_lib.diffsyncZX2_commit(u.Z, db[key].value, server_uid)
                 if (c) {
                     try {
                         sockets[id].send(JSON.stringify({ versions : c }))
