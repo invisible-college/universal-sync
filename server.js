@@ -16,12 +16,11 @@ var each = function (o, cb) {
   return true
 }
 
-console.log('version 1014')
+console.log('version 1015')
 
 var diff_lib = require('./diff_lib.js')
 var bus = require('statebus')()
-//bus.sqlite_store()
-bus.file_store()
+bus.sqlite_store()
 
 var db = {}
 each(bus.cache, function(value, key){
