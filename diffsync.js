@@ -1,23 +1,181 @@
 
-var diff_lib = (typeof(module) != 'undefined') ? module.exports : {}
+var diffsync = (typeof(module) != 'undefined') ? module.exports : {}
 
-console.log('loading diff_lib...')
+diffsync.create_client = function (options) {
+    // options: ws_url, channel, get_text, get_range, on_text, on_range
 
-var each = function (o, cb) {
-  if (o instanceof Array) {
-    for (var i = 0; i < o.length; i++) {
-      if (cb(o[i], i, o) == false)
-        return false
+    var self = {}
+    self.on_change = null
+    self.update_range = null
+
+    var uid = ('U' + Math.random()).replace(/\./, '')
+    var syncpair = diffsync.create_syncpair('c')
+    
+    function reconnect() {
+        console.log('connecting...')
+        var ws = new WebSocket(options.ws_url)
+    
+        ws.onopen = function () {
+            ws.send(JSON.stringify({ join : { channel : options.channel, uid : uid } }))
+            on_pong()
+        }
+    
+        ws.onclose = function () {
+            console.log('connection closed...')
+            if (ws) {
+                ws = null
+                reconnect()
+            }
+        }
+    
+        var pong_timer = null
+        function on_pong() {
+            clearTimeout(pong_timer)
+            setTimeout(function () {
+                ws.send(JSON.stringify({ ping : true }))
+                pong_timer = setTimeout(function () {
+                    console.log('no pong came!!')
+                    if (ws) {
+                        ws = null
+                        reconnect()
+                    }
+                }, 4000)
+            }, 3000)
+        }
+    
+        function try_send(msg) {
+            try {
+                ws.send(msg)
+            } catch (e) {}
+        }
+    
+        ws.onmessage = function (event) {
+            if (!ws) return;
+            var o = JSON.parse(event.data)
+            if (o.versions) merge(o.versions)
+            if (o.pong) on_pong()
+            if (o.welcome) {
+                try_send(JSON.stringify({ versions : diffsync.syncpair_my_newish_commits(syncpair) }))
+            }
+            if (o.range && options.on_range) options.on_range(o.range)
+        }
+    
+        self.on_change = function () {
+            var c = diffsync.syncpair_commit(syncpair, options.get_text())
+            if (c) {
+                try_send(JSON.stringify({ versions : c }))
+            }
+        }
+        
+        self.update_range = function () {
+            try_send(JSON.stringify({
+                range : {
+                    author : uid,
+                    range : options.get_range()
+                }
+            }))
+        }
+
+        function merge(new_vs) {
+            if (!new_vs) return;
+            self.on_change()
+            diffsync.syncpair_merge(syncpair, new_vs)
+            var patch = get_diff_patch(options.get_text(), syncpair.parents_text)
+            function adjust(x) {
+                each(patch, function (p) {
+                    if (p[0] < x) {
+                        if (p[0] + p[1] <= x) {
+                            x += -p[1] + p[2].length
+                        } else {
+                            x = p[0] + p[2].length
+                        }
+                    } else return false
+                })
+                return x
+            }
+            options.on_text(syncpair.parents_text, map_array(options.get_range(), adjust))
+        }
     }
-  } else {
-    for (var k in o) {
-      if (o.hasOwnProperty(k)) {
-        if (cb(o[k], k, o) == false)
-          return false
-      }
+    reconnect()
+
+    return self
+}
+
+///////////////
+
+diffsync.create_syncpair = function (author) {
+    var self = {}
+    self.versions = {}
+    self.parents = []
+    self.parents_text = ''
+    self.author = author
+    self.next_commit = 0
+    return self
+}
+
+diffsync.syncpair_commit = function (self, s) {
+    if (s == self.parents_text) return;
+    var rid = self.author + self.next_commit++
+    var new_commit = {}
+    new_commit[rid] = {
+        parents : self.parents,
+        diff : get_diff_patch(self.parents_text, s)
     }
-  }
-  return true
+    self.parents = [rid]
+    self.parents_text = s
+    extend(self.versions, new_commit)
+    return new_commit
+}
+
+diffsync.syncpair_merge = function (self, v) {
+    each(v, function (v, k) {
+        if (!self.versions[k]) {
+            self.versions[k] = v
+        }
+    })
+    self.parents = get_leaves(self.versions)
+    self.parents_text = rec_merge(self.parents, self.versions)
+    if (self.parents && self.parents.length == 1 && !self.parents[0].startsWith(self.author)) {
+        each(self.versions, function (v, k) {
+            if (k != self.parents[0]) {
+                v.seen = true
+                delete v.text
+            }
+        })
+    }
+    return self.parents_text
+}
+
+diffsync.syncpair_my_newish_commits = function (self) {
+    var c = {}
+    each(self.versions, function (v, k) {
+        if (k.startsWith(self.author) && !v.seen) {
+            c[k] = {
+                parents : v.parents,
+                diff : v.diff
+            }
+        }
+    })
+    return c
+}
+
+///////////////
+
+function each(o, cb) {
+    if (o instanceof Array) {
+        for (var i = 0; i < o.length; i++) {
+            if (cb(o[i], i, o) == false)
+                return false
+        }
+    } else {
+        for (var k in o) {
+            if (o.hasOwnProperty(k)) {
+                if (cb(o[k], k, o) == false)
+                    return false
+            }
+        }
+    }
+    return true
 }
 
 function map_array(a, f) {
@@ -100,164 +258,7 @@ function rec_merge(these, vs) {
     return r
 }
 
-diff_lib.create_diffsyncZX2 = function () {
-    var self = {}
-    self.versions = {}
-    self.parents = []
-    self.parents_text = ''
-    return self
-}
-
-diff_lib.diffsyncZX2_commit = function (self, s, author) {
-    if (s == self.parents_text) return;
-    var rid = ('R' + Math.random()).replace(/\./, '')
-    var new_commit = {}
-    new_commit[rid] = {
-        parents : self.parents,
-        diff : get_diff_patch(self.parents_text, s),
-        author : author
-    }
-    self.parents = [rid]
-    self.parents_text = s
-    extend(self.versions, new_commit)
-    return new_commit
-}
-
-diff_lib.diffsyncZX2_merge = function (self, v, author) {
-    each(v, function (v, k) {
-        if (!self.versions[k]) {
-            self.versions[k] = v
-        }
-    })
-    self.parents = get_leaves(self.versions)
-    self.parents_text = rec_merge(self.parents, self.versions)
-    if (self.parents && self.parents.length == 1 && self.versions[self.parents[0]].author != author) {
-        each(self.versions, function (v, k) {
-            if (k != self.parents[0]) {
-                v.seen = true
-                delete v.text
-            }
-        })
-    }
-    return self.parents_text
-}
-
-diff_lib.diffsyncZX2_my_newish_commits = function (self, author) {
-    var c = {}
-    each(self.versions, function (v, k) {
-        if ((v.author == author) && !v.seen) {
-            c[k] = {}
-            c[k].parents = v.parents
-            c[k].diff = v.diff
-            c[k].author = v.author
-        }
-    })
-    return c
-}
-
-diff_lib.create_diffsyncZY2 = function (ws_url, channel, get_text, get_range, on_text, on_range) {
-    var self = {}
-    self.commit = null
-    self.update_range = null
-
-    var uid = ('U' + Math.random()).replace(/\./, '')
-    var Z = diff_lib.create_diffsyncZX2()
-    
-    function reconnect() {
-        console.log('reconnecting...')
-        var ws = new WebSocket(ws_url)
-    
-        ws.onopen = function () {
-            ws.send(JSON.stringify({ join : { channel : channel, uid : uid } }))
-            on_pong()
-        }
-    
-        ws.onclose = function () {
-            console.log('connection closed...')
-            if (ws) {
-                ws = null
-                reconnect()
-            }
-        }
-    
-        var pong_timer = null
-        function on_pong() {
-            clearTimeout(pong_timer)
-            setTimeout(function () {
-                ws.send(JSON.stringify({ ping : true }))
-                pong_timer = setTimeout(function () {
-                    console.log('no pong came!!')
-                    if (ws) {
-                        ws = null
-                        reconnect()
-                    }
-                }, 4000)
-            }, 3000)
-        }
-    
-        function try_send(msg) {
-            try {
-                ws.send(msg)
-            } catch (e) {}
-        }
-    
-        ws.onmessage = function (event) {
-            if (!ws) return;
-            var o = JSON.parse(event.data)
-            if (o.versions) merge(o.versions)
-            if (o.pong) on_pong()
-            if (o.welcome) {
-                try_send(JSON.stringify({ versions : diff_lib.diffsyncZX2_my_newish_commits(Z, uid) }))
-            }
-            if (o.range && on_range) on_range(o.range)
-        }
-    
-        self.commit = function () {
-            var c = diff_lib.diffsyncZX2_commit(Z, get_text(), uid)
-            if (c) {
-                try_send(JSON.stringify({ versions : c }))
-            }
-        }
-        
-        self.update_range = function () {
-            try_send(JSON.stringify({
-                range : {
-                    author : uid,
-                    range : get_range()
-                }
-            }))
-        }
-
-        function merge(new_vs) {
-            if (!new_vs) return;
-            self.commit()
-            diff_lib.diffsyncZX2_merge(Z, new_vs, uid)
-            var patch = get_diff_patch(get_text(), Z.parents_text)
-            function adjust(x) {
-                each(patch, function (p) {
-                    if (p[0] < x) {
-                        if (p[0] + p[1] <= x) {
-                            x += -p[1] + p[2].length
-                        } else {
-                            x = p[0] + p[2].length
-                        }
-                    } else return false
-                })
-                return x
-            }
-            on_text(Z.parents_text, map_array(get_range(), adjust))
-        }
-    }
-    reconnect()
-
-    return self
-}
-
 ///////////////
-
-
-
-
 
 // function get_diff_patch(a, b)
 // function get_merged_diff_patch(a, b, o)
@@ -347,7 +348,7 @@ function get_diff_patch(a, b) {
     return diff_convert_to_my_format(diff_main(a, b))
 }
 
-diff_lib.get_diff_patch = get_diff_patch
+diffsync.get_diff_patch = get_diff_patch
 
 /**
  * This library modifies the diff-patch-match library by Neil Fraser

@@ -1,33 +1,15 @@
 
-var each = function (o, cb) {
-  if (o instanceof Array) {
-    for (var i = 0; i < o.length; i++) {
-      if (cb(o[i], i, o) == false)
-        return false
-    }
-  } else {
-    for (var k in o) {
-      if (o.hasOwnProperty(k)) {
-        if (cb(o[k], k, o) == false)
-          return false
-      }
-    }
-  }
-  return true
-}
+console.log('version 1020')
 
-console.log('version 1015')
-
-var diff_lib = require('./diff_lib.js')
+var diffsync = require('./diffsync.js')
 var bus = require('statebus')()
 bus.sqlite_store()
 
 var db = {}
-each(bus.cache, function(value, key){
-    db[key]=value
-})
-
-var server_uid = ('U' + Math.random()).replace(/\./, '')
+for (var key in bus.cache) {
+    if (!bus.cache.hasOwnProperty(key)) { continue }
+    db[key] = bus.cache[key]
+}
 
 var fs = require('fs')
 var web_server = null
@@ -64,15 +46,15 @@ wss.on('connection', function connection(ws) {
                 db[key].channel = o.join.channel
                 db[key].id = uid
                 db[key].key = key
-                db[key].Z = diff_lib.create_diffsyncZX2()
+                db[key].syncpair = diffsync.create_syncpair('s')
                 var x = db['channel_versions/'+db[key].channel]
-                diff_lib.diffsyncZX2_commit(db[key].Z, (x && x.value) || '', server_uid)
+                diffsync.syncpair_commit(db[key].syncpair, (x && x.value) || '')
             }
 
             sockets[uid] = ws
 
             try {
-                ws.send(JSON.stringify({ versions : diff_lib.diffsyncZX2_my_newish_commits(db[key].Z, server_uid), welcome : true }))
+                ws.send(JSON.stringify({ versions : diffsync.syncpair_my_newish_commits(db[key].syncpair), welcome : true }))
             } catch (e) {}
             bus.save(db[key])
         }
@@ -95,37 +77,37 @@ wss.on('connection', function connection(ws) {
         if (!new_vs) return;
         if (!uid) return;
         var user_key = 'users/'+uid
-        diff_lib.diffsyncZX2_merge(db[user_key].Z, new_vs, server_uid)
+        diffsync.syncpair_merge(db[user_key].syncpair, new_vs)
         var key = 'channel_versions/'+db[user_key].channel
-        db[key] = {key:key, value:db[user_key].Z.parents_text}
-        each(db, function (v, k) {
-            if (!k.startsWith('users/')){return}
-            var u = v
-            var id = u.id
-            if (u.channel == db[user_key].channel && id != uid) {
-                var c = diff_lib.diffsyncZX2_commit(u.Z, db[key].value, server_uid)
+        db[key] = {key:key, value:db[user_key].syncpair.parents_text}
+        for (var k in db) {
+            if (!db.hasOwnProperty(k)) { continue }
+            if (!k.startsWith('users/')) { continue }
+            var v = db[k]
+            if (v.channel == db[user_key].channel && v.id != uid) {
+                var c = diffsync.syncpair_commit(v.syncpair, db[key].value)
                 if (c) {
                     try {
-                        sockets[id].send(JSON.stringify({ versions : c }))
+                        sockets[v.id].send(JSON.stringify({ versions : c }))
                     } catch (e) {}
-                    bus.save(u)
+                    bus.save(v)
                 }
             }
-        })
+        }
         bus.save(db[user_key])
         bus.save(db[key])
     }
 
     function on_range(r) {
-        each(db, function (v, k) {
-            if (!k.startsWith('users/')){return}
-            var u = v
-            var id = u.id
-            if (u.channel == db['users/'+uid].channel && id != uid) {
+        for (var k in db) {
+            if (!db.hasOwnProperty(k)) { continue }
+            if (!k.startsWith('users/')) { continue }
+            var v = db[k]
+            if (v.channel == db['users/' + uid].channel && v.id != uid) {
                 try {
-                    sockets[id].send(JSON.stringify({ range : r }))
+                    sockets[v.id].send(JSON.stringify({ range : r }))
                 } catch (e) {}
             }
-        })
+        }
     }
 })

@@ -1,6 +1,6 @@
 
 <body>
-<script src="./diff_lib.js"></script>
+<script src="./diffsync.js"></script>
 <script>
 
 var t = document.createElement('textarea')
@@ -8,21 +8,28 @@ t.style.width = '100%'
 t.style.height = '100%'
 document.body.append(t)
 
-var ZY2 = diff_lib.create_diffsyncZY2('wss://invisible.college:60606', 'goop4', function () {
-    return t.value
-}, function () {
-    return [t.selectionStart, t.selectionEnd]
-}, function (text, range) {
-    t.value = text
-    t.setSelectionRange(range[0], range[1])
-}, null)
+var ds = diffsync.create_client({
+	ws_url : 'wss://invisible.college:60606',
+	channel : 'goop4',
+	get_text : function () {
+	    return t.value
+	},
+	get_range : function () {
+	    return [t.selectionStart, t.selectionEnd]
+	},
+	on_text : function (text, range) {
+	    t.value = text
+	    t.setSelectionRange(range[0], range[1])
+	},
+	on_range : null
+})
 
 t.onkeyup = function () {
-    ZY2.commit()
+    ds.on_change()
 }
 t.onpaste = function () {
     setTimeout(function () {
-        ZY2.commit()
+        ds.on_change()
     }, 0)
 }
 
