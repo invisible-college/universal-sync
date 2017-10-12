@@ -220,6 +220,18 @@ function get_leaves_in_subset(subset, vs) {
 function get_ancestors(a, vs) {
     var ancestors = {}
     function helper(x) {
+
+
+
+        // work here
+        if (!vs[x]) {
+            console.log('CRASH!')
+            console.log(JSON.stringify(vs, null, '   '))
+        }
+
+
+
+
         var pp = vs[x].parents
         if (pp)
             each(pp, function (x) {
