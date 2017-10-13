@@ -29,6 +29,12 @@ console.log('..on port ' + port)
 const WebSocket = require('ws');
 const wss = new WebSocket.Server({ server : web_server });
 const sockets = {}
+
+
+// work here
+var times = {}
+
+
 wss.on('connection', function connection(ws) {
     console.log('new connection')
 
@@ -92,10 +98,19 @@ wss.on('connection', function connection(ws) {
                     } catch (e) {}
 
                     // work here
-
-                    console.time('bus.save(v)')
+                    console.log('save v of size: ' + JSON.stringify(v).length)
+                    var t = Date.now()
                     bus.save(v)
-                    console.timeEnd('bus.save(v)')
+                    var et = (Date.now() - t)
+                    console.log('took this time: ' + et)
+                    if (!times[k]) times[k] = []
+                    times[k].push(et)
+
+                    var sum = 0
+                    for (var i = 0; i < times[k].length; i++) {
+                        sum += times[k][i]
+                    }
+                    console.log('avg time: ' + (sum / times[k].length))
                 }
             }
         }
