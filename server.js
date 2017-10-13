@@ -12,23 +12,9 @@ for (var key in bus.cache) {
     if (!bus.cache.hasOwnProperty(key)) { continue }
     var o = bus.cache[key]
     if (key.startsWith('channel_versions/')) {
-
-        if (o.value) {
-            var m = key.match(/channel_versions\/(.*)/)
-            channel_versions[m[1]] = o.value
-            continue
-        }
-
         channel_versions[o.name] = o.text
     }
     if (key.startsWith('users/')) {
-
-        if (o.syncpair.versions) {
-            var m = key.match(/users\/(.*)/)
-            users[m[1]] = o
-            continue
-        }
-
         var u = users[o.id]
         if (!u) u = users[o.id] = {}
         u.id = o.id
@@ -49,10 +35,6 @@ for (var key in bus.cache) {
         }
     }
 }
-
-
-require('fs').writeFileSync('./blah.txt', JSON.stringify(channel_versions) + '\n' + JSON.stringify(users))
-
 
 var fs = require('fs')
 var web_server = null
