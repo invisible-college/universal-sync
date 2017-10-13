@@ -12,7 +12,13 @@ for (var key in bus.cache) {
     if (!bus.cache.hasOwnProperty(key)) { continue }
     var o = bus.cache[key]
     if (key.startsWith('channel_versions/')) {
+
+
         channel_versions[o.name] = o.text
+
+        // work here
+        console.log('channel ' + o.name + ' == ' + o.text)
+
     }
     if (key.startsWith('users/')) {
         var u = users[o.id]
