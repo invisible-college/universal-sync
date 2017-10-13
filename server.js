@@ -12,13 +12,7 @@ for (var key in bus.cache) {
     if (!bus.cache.hasOwnProperty(key)) { continue }
     var o = bus.cache[key]
     if (key.startsWith('channel_versions/')) {
-
-
         channel_versions[o.name] = o.text
-
-        // work here
-        console.log('channel ' + o.name + ' == ' + o.text)
-
     }
     if (key.startsWith('users/')) {
         var u = users[o.id]
@@ -41,6 +35,17 @@ for (var key in bus.cache) {
         }
     }
 }
+
+// work here
+for (var k in channel_versions) {
+    if (!channel_versions.hasOwnProperty(k)) { continue }
+    console.log('channel ' + k + ' == ' + channel_versions[k])
+}
+for (var k in users) {
+    if (!users.hasOwnProperty(k)) { continue }
+    console.log('user ' + k + ' == ' + JSON.stringify(users[k]))
+}
+
 
 var fs = require('fs')
 var web_server = null
