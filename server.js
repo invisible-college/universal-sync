@@ -36,17 +36,6 @@ for (var key in bus.cache) {
     }
 }
 
-// work here
-for (var k in channel_versions) {
-    if (!channel_versions.hasOwnProperty(k)) { continue }
-    console.log('channel ' + k + ' == ' + channel_versions[k])
-}
-for (var k in users) {
-    if (!users.hasOwnProperty(k)) { continue }
-    console.log('user ' + k + ' == ' + JSON.stringify(users[k]))
-}
-
-
 var fs = require('fs')
 var web_server = null
 if (fs.existsSync('privkey.pem') && fs.existsSync('fullchain.pem')) {
