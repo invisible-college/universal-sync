@@ -5,10 +5,49 @@ var diffsync = require('./diffsync.js')
 var bus = require('statebus')()
 bus.sqlite_store()
 
-var db = {}
+var channel_versions = {}
+var users = {}
+
 for (var key in bus.cache) {
     if (!bus.cache.hasOwnProperty(key)) { continue }
-    db[key] = bus.cache[key]
+    var o = bus.cache[key]
+    if (key.startsWith('channel_versions/')) {
+
+        if (o.value) {
+            var m = key.match(/channel_versions\/(.*)/)
+            channel_versions[m[1]] = o.value
+            continue
+        }
+
+        channel_versions[o.name] = o.text
+    }
+    if (key.startsWith('users/')) {
+
+        if (o.syncpair.versions) {
+            var m = key.match(/users\/(.*)/)
+            users[m[1]] = o
+            continue
+        }
+
+        var u = users[o.id]
+        if (!u) u = users[o.id] = {}
+        u.id = o.id
+        u.channel = o.channel
+        if (!u.syncpair) u.syncpair = { versions : {} }
+        u.syncpair.parents = o.syncpair.parents
+        u.syncpair.parents_text = o.syncpair.parents_text
+        u.syncpair.author = o.syncpair.author
+        u.syncpair.next_commit = o.syncpair.next_commit
+    }
+    if (key.startsWith('/users_versions')) {
+        var u = users[o.uid]
+        if (!u) u = users[o.uid] = {}
+        if (!u.syncpair) u.syncpair = { versions : {} }
+        u.syncpair.versions[o.id] = {
+            parents : o.parents,
+            diff : o.diff
+        }
+    }
 }
 
 var fs = require('fs')
@@ -30,11 +69,6 @@ const WebSocket = require('ws');
 const wss = new WebSocket.Server({ server : web_server });
 const sockets = {}
 
-
-// work here
-var times = {}
-
-
 wss.on('connection', function connection(ws) {
     console.log('new connection')
 
@@ -46,23 +80,20 @@ wss.on('connection', function connection(ws) {
         var o = JSON.parse(message)
         if (o.join) {
             uid = o.join.uid
-            var key = 'users/'+uid
-            if (!db[key]) {
-                db[key] = {}
-                db[key].channel = o.join.channel
-                db[key].id = uid
-                db[key].key = key
-                db[key].syncpair = diffsync.create_syncpair('s')
-                var x = db['channel_versions/'+db[key].channel]
-                diffsync.syncpair_commit(db[key].syncpair, (x && x.value) || '')
+            var u = users[uid]
+            if (!u) {
+                u = {}
+                u.id = uid
+                u.channel = o.join.channel
+                u.syncpair = diffsync.create_syncpair('s')
+                var x = channel_versions[u.channel]
+                diffsync.syncpair_commit(u.syncpair, (x && x.value) || '')
             }
-
             sockets[uid] = ws
-
             try {
-                ws.send(JSON.stringify({ versions : diffsync.syncpair_my_newish_commits(db[key].syncpair), welcome : true }))
+                ws.send(JSON.stringify({ versions : diffsync.syncpair_my_newish_commits(u.syncpair), welcome : true }))
             } catch (e) {}
-            bus.save(db[key])
+            save_user(u)
         }
         if (o.versions) merge(o.versions)
         if (o.range) on_range(o.range)
@@ -72,65 +103,83 @@ wss.on('connection', function connection(ws) {
             } catch (e) {}
         }
         if (o.close) {
-            var key = 'users/'+uid
-            bus.delete(key)
+            var u = users[uid]
+            delete users[uid]
+            bus.delete('users/' + u.id)
+            for (var k in u.syncpair.versions) {
+                if (!u.syncpair.versions.hasOwnProperty(k)) { continue }
+                bus.delete('users_versions/' + u.id + '/' + k)
+            }
         }
     })
     ws.on('close', () => {
         delete sockets[uid]
     })
+
+    function save_user(u) {
+        bus.save({
+            key : 'users/' + u.id,
+            id : u.id,
+            channel : u.channel,
+            syncpair : {
+                parents : u.syncpair.parents,
+                parents_text : u.syncpair.parents_text,
+                author : u.syncpair.author,
+                next_commit : u.syncpair.next_commit
+            }
+        })
+    }
+
+    function save_versions(u, vs) {
+        for (var k in vs) {
+            if (!vs.hasOwnProperty(k)) { continue }
+            bus.save({
+                key : 'users_versions/' + u.id + '/' + k,
+                uid : u.id,
+                id : k,
+                parents : vs[k].parents,
+                diff : vs[k].diff
+            })
+        }
+    }
+
     function merge(new_vs) {
         if (!new_vs) return;
         if (!uid) return;
-        var user_key = 'users/'+uid
-        diffsync.syncpair_merge(db[user_key].syncpair, new_vs)
-        var key = 'channel_versions/'+db[user_key].channel
-        db[key] = {key:key, value:db[user_key].syncpair.parents_text}
-        for (var k in db) {
-            if (!db.hasOwnProperty(k)) { continue }
-            if (!k.startsWith('users/')) { continue }
-            var v = db[k]
-            if (v.channel == db[user_key].channel && v.id != uid) {
-                var c = diffsync.syncpair_commit(v.syncpair, db[key].value)
+        var u = users[uid]
+
+        diffsync.syncpair_merge(u.syncpair, new_vs)
+        save_versions(u, new_vs)
+        save_user(u)
+
+        channel_versions[u.channel] = u.syncpair.parents_text
+        bus.save({
+            key : 'channel_versions/' + u.channel,
+            name : u.channel,
+            text : channel_versions[u.channel]
+        })
+
+        for (var k in users) {
+            if (!users.hasOwnProperty(k)) { continue }
+            var v = users[k]
+            if (v.channel == u.channel && v.id != uid) {
+                var c = diffsync.syncpair_commit(v.syncpair, channel_versions[u.channel])
                 if (c) {
                     try {
                         sockets[v.id].send(JSON.stringify({ versions : c }))
                     } catch (e) {}
-
-                    // work here
-                    console.log('save v of size: ' + JSON.stringify(v).length)
-                    var t = Date.now()
-                    bus.save(v)
-                    var et = (Date.now() - t)
-                    console.log('took this time: ' + et)
-                    if (!times[k]) times[k] = []
-                    times[k].push(et)
-
-                    var sum = 0
-                    for (var i = 0; i < times[k].length; i++) {
-                        sum += times[k][i]
-                    }
-                    console.log('avg time: ' + (sum / times[k].length))
+                    save_user(v)
+                    save_versions(v, c)
                 }
             }
         }
-
-        // work here
-        console.time('bus.save(db[user_key])')
-        bus.save(db[user_key])
-        console.timeEnd('bus.save(db[user_key])')
-
-        console.time('bus.save(db[key])')
-        bus.save(db[key])
-        console.timeEnd('bus.save(db[key])')
     }
 
     function on_range(r) {
-        for (var k in db) {
-            if (!db.hasOwnProperty(k)) { continue }
-            if (!k.startsWith('users/')) { continue }
-            var v = db[k]
-            if (v.channel == db['users/' + uid].channel && v.id != uid) {
+        for (var k in users) {
+            if (!users.hasOwnProperty(k)) { continue }
+            var v = users[k]
+            if (v.channel == users[uid].channel && v.id != uid) {
                 try {
                     sockets[v.id].send(JSON.stringify({ range : r }))
                 } catch (e) {}
