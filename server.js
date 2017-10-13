@@ -68,7 +68,7 @@ wss.on('connection', function connection(ws) {
             uid = o.join.uid
             var u = users[uid]
             if (!u) {
-                u = {}
+                u = users[uid] = {}
                 u.id = uid
                 u.channel = o.join.channel
                 u.syncpair = diffsync.create_syncpair('s')
