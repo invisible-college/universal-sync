@@ -78,8 +78,7 @@ wss.on('connection', function connection(ws) {
                 u.id = uid
                 u.channel = o.join.channel
                 u.syncpair = diffsync.create_syncpair('s')
-                var x = channel_versions[u.channel]
-                diffsync.syncpair_commit(u.syncpair, (x && x.value) || '')
+                diffsync.syncpair_commit(u.syncpair, channel_versions[u.channel] || '')
             }
             sockets[uid] = ws
             try {
