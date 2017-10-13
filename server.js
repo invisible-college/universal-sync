@@ -25,7 +25,7 @@ for (var key in bus.cache) {
         u.syncpair.author = o.syncpair.author
         u.syncpair.next_commit = o.syncpair.next_commit
     }
-    if (key.startsWith('/users_versions')) {
+    if (key.startsWith('users_versions/')) {
         var u = users[o.uid]
         if (!u) u = users[o.uid] = {}
         if (!u.syncpair) u.syncpair = { versions : {} }
