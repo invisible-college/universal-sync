@@ -50,6 +50,10 @@ for (var key in bus.cache) {
     }
 }
 
+
+require('fs').writeFileSync('./blah.txt', JSON.stringify(channel_versions) + '\n' + JSON.stringify(users))
+
+
 var fs = require('fs')
 var web_server = null
 if (fs.existsSync('privkey.pem') && fs.existsSync('fullchain.pem')) {
