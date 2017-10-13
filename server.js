@@ -90,12 +90,24 @@ wss.on('connection', function connection(ws) {
                     try {
                         sockets[v.id].send(JSON.stringify({ versions : c }))
                     } catch (e) {}
+
+                    // work here
+
+                    console.time('bus.save(v)')
                     bus.save(v)
+                    console.timeEnd('bus.save(v)')
                 }
             }
         }
+
+        // work here
+        console.time('bus.save(db[user_key])')
         bus.save(db[user_key])
+        console.timeEnd('bus.save(db[user_key])')
+
+        console.time('bus.save(db[key])')
         bus.save(db[key])
+        console.timeEnd('bus.save(db[key])')
     }
 
     function on_range(r) {
