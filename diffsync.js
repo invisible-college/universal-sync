@@ -1,6 +1,8 @@
 
 var diffsync = (typeof(module) != 'undefined') ? module.exports : {}
 
+diffsync.version = 1022
+
 diffsync.create_client = function (options) {
     // options: ws_url, channel, get_text, get_range, on_text, on_range
 
@@ -25,10 +27,10 @@ diffsync.create_client = function (options) {
                     }
                 }
             })
-            ws.send(JSON.stringify({
+            send({
                 join : { channel : options.channel },
                 commits : minigit.commits
-            }))
+            })
             each(texts, function (t, id) {
                 minigit.commits[id].text = t
             })
@@ -47,7 +49,7 @@ diffsync.create_client = function (options) {
         function on_pong() {
             clearTimeout(pong_timer)
             setTimeout(function () {
-                ws.send(JSON.stringify({ ping : true }))
+                send({ ping : true })
                 pong_timer = setTimeout(function () {
                     console.log('no pong came!!')
                     if (ws) {
@@ -58,9 +60,10 @@ diffsync.create_client = function (options) {
             }, 3000)
         }
     
-        function try_send(msg) {
+        function send(o) {
+            o.v = diffsync.version
             try {
-                ws.send(msg)
+                ws.send(JSON.stringify(o))
             } catch (e) {}
         }
     
@@ -77,17 +80,17 @@ diffsync.create_client = function (options) {
         self.on_change = function () {
             var c = diffsync.minigit_commit(minigit, options.get_text())
             if (c) {
-                try_send(JSON.stringify({ commits : c }))
+                send({ commits : c })
             }
         }
         
         self.update_range = function () {
-            try_send(JSON.stringify({
+            send({
                 range : {
                     author : uid,
                     range : options.get_range()
                 }
-            }))
+            })
         }
 
         function merge(commits) {

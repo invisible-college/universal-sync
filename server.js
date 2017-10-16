@@ -1,7 +1,7 @@
 
-console.log('version 1021')
-
 var diffsync = require('./diffsync.js')
+console.log('diffsync version ' + diffsync.version)
+
 var bus = require('statebus')()
 bus.sqlite_store()
 
@@ -27,10 +27,6 @@ each(bus.cache, function (o, key) {
 each(channels, function (c) {
     diffsync.minigit_merge(c.minigit, {})
 })
-
-// work here
-console.log(JSON.stringify(channels))
-
 
 var fs = require('fs')
 var web_server = null
@@ -59,6 +55,7 @@ wss.on('connection', function connection(ws) {
         console.log('message: ' + message)
 
         var o = JSON.parse(message)
+        if (!(o.v && o.v >= diffsync.version)) { return }
         if (o.join) {
             channel = channels[o.join.channel]
             if (!channel) channel = channels[o.join.channel] = {
