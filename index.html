@@ -9,9 +9,9 @@ t.style.height = '100%'
 document.body.append(t)
 
 var ds = diffsync.create_client({
-	// ws_url : 'ws://localhost:60606',
-	ws_url : 'wss://invisible.college:60606',
-	channel : 'goop4',
+	ws_url : 'ws://localhost:' + diffsync.port,
+	// ws_url : 'wss://invisible.college:' + diffsync.port,
+	channel : 'goop8',
 	get_text : function () {
 	    return t.value
 	},

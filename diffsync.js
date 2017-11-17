@@ -1,48 +1,66 @@
 
 var diffsync = (typeof(module) != 'undefined') ? module.exports : {}
 
-diffsync.version = 1022
+diffsync.version = 1039
+diffsync.port = 60607
 
+// options is an object like this: {
+//     ws_url : 'ws://invisible.college:' + diffsync.port,
+//     channel : 'the_cool_room',
+//     get_text : function () {
+//         return current_text_displayed_to_user
+//     },
+//     get_range : function () {
+//         return [selection_start, selection_end]
+//     },
+//     on_text : function (text, range) {
+//         current_text_displayed_to_user = text
+//         set_selection(range[0], range[1])
+//     },
+//     on_range : function (other_users_range_info) {
+//         // the parameter comes from what you pass to diffsync_client.update_range(x)
+//     }
+// }
+//
+// returns an object with a couple methods:
+// var client = diffsync.create_client({...})
+// client.on_change() <-- call this when the user changes the text
+// client.update_range({ your_own : 'data' }) <-- this will cause other clients' on_range handlers to get called with { your_own : 'data' } as a parameter
+//
 diffsync.create_client = function (options) {
-    // options: ws_url, channel, get_text, get_range, on_text, on_range
-
     var self = {}
     self.on_change = null
     self.update_range = null
+    self.on_window_closing = null
 
     var uid = guid()
-    var minigit = diffsync.minigit_create()
+    var minigit = diffsync.create_minigit()
+    var unacknowledged_commits = {}
+
+    window.addEventListener('beforeunload', function () {
+        if (self.on_window_closing) self.on_window_closing()
+    })
     
     function reconnect() {
         console.log('connecting...')
         var ws = new WebSocket(options.ws_url)
-    
-        ws.onopen = function () {
-            var texts = {}
-            each(minigit.commits, function (c, id) {
-                if (Object.keys(c.parents).length > 0) {
-                    if (c.text) {
-                        texts[id] = c.text
-                        delete c.text
-                    }
-                }
-            })
-            send({
-                join : { channel : options.channel },
-                commits : minigit.commits
-            })
-            each(texts, function (t, id) {
-                minigit.commits[id].text = t
-            })
-            on_pong()
+
+        function send(o) {
+            o.v = diffsync.version
+            o.uid = uid
+            o.channel = options.channel
+            try {
+                ws.send(JSON.stringify(o))
+            } catch (e) {}
+        }
+
+        self.on_window_closing = function () {
+            send({ close : true })
         }
     
-        ws.onclose = function () {
-            console.log('connection closed...')
-            if (ws) {
-                ws = null
-                reconnect()
-            }
+        ws.onopen = function () {
+            send({ join : true })
+            on_pong()
         }
     
         var pong_timer = null
@@ -59,57 +77,68 @@ diffsync.create_client = function (options) {
                 }, 4000)
             }, 3000)
         }
-    
-        function send(o) {
-            o.v = diffsync.version
-            try {
-                ws.send(JSON.stringify(o))
-            } catch (e) {}
+
+        ws.onclose = function () {
+            console.log('connection closed...')
+            if (ws) {
+                ws = null
+                reconnect()
+            }
         }
+
+        var sent_unacknowledged_commits = false
     
         ws.onmessage = function (event) {
-            if (!ws) return;
+            if (!ws) { return }
             var o = JSON.parse(event.data)
+            if (o.pong) { return on_pong() }
+
+            console.log('message: ' + event.data)
+
             if (o.commits) {
-                merge(o.commits)
+                self.on_change()
+                minigit.merge(o.commits)
+                var patch = get_diff_patch(options.get_text(), minigit.cache)
+                options.on_text(minigit.cache, map_array(options.get_range(), function (x) {
+                    each(patch, function (p) {
+                        if (p[0] < x) {
+                            if (p[0] + p[1] <= x) {
+                                x += -p[1] + p[2].length
+                            } else {
+                                x = p[0] + p[2].length
+                            }
+                        } else return false
+                    })
+                    return x
+                }))
+
+                if (o.welcome) {
+                    each(extend(o.commits, minigit.get_ancestors(o.commits)), function (_, id) {
+                        delete unacknowledged_commits[id]
+                    })
+                    if (Object.keys(unacknowledged_commits).length > 0) {
+                        send({ commits : unacknowledged_commits })
+                    }
+                    sent_unacknowledged_commits = true
+                }
+
+                send({ leaves : minigit.leaves })
             }
-            if (o.pong) on_pong()
             if (o.range && options.on_range) options.on_range(o.range)
         }
 
         self.on_change = function () {
-            var c = diffsync.minigit_commit(minigit, options.get_text())
-            if (c) {
-                send({ commits : c })
+            var cs = minigit.commit(options.get_text())
+            if (cs) {
+                extend(unacknowledged_commits, cs)
+                if (sent_unacknowledged_commits) {
+                    send({ commits : cs })
+                }
             }
         }
         
         self.update_range = function () {
-            send({
-                range : {
-                    author : uid,
-                    range : options.get_range()
-                }
-            })
-        }
-
-        function merge(commits) {
-            self.on_change()
-            diffsync.minigit_merge(minigit, commits)
-            var patch = get_diff_patch(options.get_text(), minigit.text)
-            function adjust(x) {
-                each(patch, function (p) {
-                    if (p[0] < x) {
-                        if (p[0] + p[1] <= x) {
-                            x += -p[1] + p[2].length
-                        } else {
-                            x = p[0] + p[2].length
-                        }
-                    } else return false
-                })
-                return x
-            }
-            options.on_text(minigit.text, map_array(options.get_range(), adjust))
+            send({ range : options.get_range() })
         }
     }
     reconnect()
@@ -117,150 +146,384 @@ diffsync.create_client = function (options) {
     return self
 }
 
-///////////////
-
-diffsync.minigit_create = function () {
+// options is an object like this: {
+//     wss : a websocket server from the 'ws' module,
+//     initial_data : {
+//         'some_channel_name' : {
+//             commits : {
+//                 'asdfasdf' : {
+//                     to_parents : {},
+//                     from_parents : {},
+//                     text : 'hello'
+//                 }
+//             },
+//             members : {
+//                 'lkjlkjlkj' : {
+//                     do_not_delete : {
+//                         'asdfasdf' : true
+//                     }
+//                 },
+//                 last_seen : 1510878755554,
+//                 last_sent : 1510878755554
+//             }
+//         }
+//     },
+//     on_change : function (changes) {
+//         changes contains commits and members that changed,
+//         and looks like: {
+//             channel : 'some_channel_name',
+//             commits : {...},
+//             members : {...}
+//         }
+//     }
+// }
+//
+diffsync.create_server = function (options) {
     var self = {}
-    self.commits = {}
-    self.leaves = []
-    self.text = ''
+    self.channels = {}
+
+    function new_channel(name) {
+        return self.channels[name] = {
+            name : name,
+            minigit : diffsync.create_minigit(),
+            members : {}
+        }
+    }
+    function get_channel(name) {
+        return self.channels[name] || new_channel(name)
+    }
+
+    var users_to_sockets = {}
+
+    if (options.initial_data) {
+        each(options.initial_data, function (data, channel) {
+            var c = get_channel(channel)
+            c.minigit.merge(data.commits)
+            extend(c.members, data.members)
+        })
+    }
+
+    options.wss.on('connection', function connection(ws) {
+        console.log('new connection')
+
+        ws.on('close', function () {
+            each(users_to_sockets, function (_ws, uid) {
+                if (_ws == ws) {
+                    delete users_to_sockets[uid]
+                }
+            })
+        })
+
+        ws.on('message', function (message) {
+            var o = JSON.parse(message)
+            if (o.v != diffsync.version) { return }
+            if (o.ping) { return try_send(ws, JSON.stringify({ pong : true })) }
+
+            console.log('message: ' + message)
+
+            var uid = o.uid
+            users_to_sockets[uid] = ws
+
+            var channel = get_channel(o.channel)
+            var changes = { channel : channel.name, commits : {}, members : {} }
+
+            if (!channel.members[uid]) channel.members[uid] = { do_not_delete : {}, last_sent : 0 }
+            channel.members[uid].last_seen = Date.now()
+            changes.members[uid] = channel.members[uid]
+
+            function try_send(ws, message) {
+                try {
+                    ws.send(message)
+                } catch (e) {}
+            }
+            function send_to_all_but_me(message) {
+                each(channel.members, function (_, them) {
+                    if (them != uid) {
+                        try_send(users_to_sockets[them], message)
+                    }
+                })
+            }
+
+            if (o.join) {
+                try_send(ws, JSON.stringify({ commits : channel.minigit.commits, welcome : true }))
+            }
+            if (o.commits) {
+                var new_commits = {}
+                each(o.commits, function (c, id) {
+                    if (!channel.minigit.commits[id]) {
+                        new_commits[id] = c
+                        changes.commits[id] = c
+                    }
+                })
+                channel.minigit.merge(new_commits)
+
+                var new_message = JSON.stringify({
+                    channel : channel.name,
+                    commits : new_commits
+                })
+                leaves = channel.minigit.get_leaves(new_commits)
+                var now = Date.now()
+                each(channel.members, function (m, them) {
+                    if (them != uid) {
+                        if (m.last_seen > m.last_sent) {
+                            m.last_sent = now
+                            changes.members[them] = m
+                        } else if (m.last_sent < now - 3000) {
+                            return
+                        }
+                        extend(m.do_not_delete, leaves)
+                        try_send(users_to_sockets[them], new_message)
+                    }
+                })
+                if (!o.leaves) o.leaves = channel.minigit.get_leaves(o.commits)
+            }
+            if (o.leaves) {
+                extend(channel.members[uid].do_not_delete, o.leaves)
+                each(channel.minigit.get_ancestors(o.leaves), function (_, id) {
+                    delete channel.members[uid].do_not_delete[id]
+                })
+                changes.members[uid] = channel.members[uid]
+
+                var necessary = {}
+                each(channel.members, function (m) {
+                    extend(necessary, m.do_not_delete)
+                })
+
+                extend(changes.commits, channel.minigit.remove_unnecessary(necessary))
+            }
+            if (o.range)
+                send_to_all_but_me(message)
+            if (o.close) {
+                delete channel.members[uid]
+                changes.members[uid] = null
+            }
+
+            if (options.on_change) options.on_change(changes)
+        })
+    })
+
     return self
 }
 
-diffsync.minigit_commit = function (self, s) {
-    if (s == self.text) { return }
+///////////////
 
-    var id = guid()
-    var c = {
-        text : s,
-        parents : {},
-        children : {}
+diffsync.create_minigit = function () {
+    var self = {
+        commits : {},
+        to_children : {},
+        commit_cache : {},
+        leaves : {},
+        cache : ''
     }
-    self.commits[id] = c
-    var cs = {}
-    each(self.leaves, function (leaf) {
-        c.parents[leaf] = get_diff_patch(s, get_text(leaf, self.commits))
-        var d = get_diff_patch(get_text(leaf, self.commits), s)
-        self.commits[leaf].children[id] = d
-        cs[leaf] = { children : {} }
-        cs[leaf].children[id] = d
-    })
-    cs[id] = {}
-    if (self.leaves.length == 0) {
-        cs[id].text = s
-    }
-    cs[id].parents = c.parents
-    cs[id].children = c.children
-    self.leaves = [id]
-    self.text = s
-    diffsync.minigit_purge(self)
-    return cs
-}
 
-diffsync.minigit_merge = function (self, cs) {
-    each(cs, function (c, id) {
-        if (!self.commits[id]) {
-            self.commits[id] = c
+    self.remove_unnecessary = function (spare_us) {
+        var affected = {}
+        while (true) {
+            var found = false
+            each(self.commits, function (c, id) {
+                if (spare_us[id]) { return }
+                var aff = self.remove(id)
+                if (aff) {
+                    extend(affected, aff)
+                    found = true
+                }
+            })
+            if (!found) break
+        }
+        return affected
+    }
+
+    self.remove = function (id) {
+        var keys = Object.keys(self.to_children[id])
+        if (keys.length == 1) {
+            var affected = {}
+
+            var being_removed = self.commits[id]
+            var c_id = keys[0]
+            var c = self.commits[c_id]
+
+            self.get_text(c_id)
+            each(being_removed.to_parents, function (_, id) {
+                self.get_text(id)
+            })
+
+            delete self.commits[id]
+            delete self.commit_cache[id]
+            delete c.to_parents[id]
+            delete c.from_parents[id]
+            affected[id] = null
+
+            each(being_removed.to_parents, function (_, id) {
+                c.to_parents[id] = get_diff_patch(self.get_text(c_id), self.get_text(id))
+                c.from_parents[id] = get_diff_patch(self.get_text(id), self.get_text(c_id))
+            })
+            if (Object.keys(c.to_parents).length == 0) {
+                c.text = self.get_text(c_id)
+            }
+            affected[c_id] = c
+
+            self.calc_children()
+
+            return affected
+        }
+    }
+
+    self.commit = function (s) {
+        if (s == self.cache) { return }
+
+        var c = {
+            to_parents : {},
+            from_parents : {}
+        }
+        if (Object.keys(self.leaves).length == 0) {
+            c.text = s
         } else {
-            each(c.children, function (d, cid) {
-                if (!self.commits[id].children[cid])
-                    self.commits[id].children[cid] = d
+            each(self.leaves, function (_, leaf) {
+                c.to_parents[leaf] = get_diff_patch(s, self.get_text(leaf))
+                c.from_parents[leaf] = get_diff_patch(self.get_text(leaf), s)
             })
         }
-    })
-    self.leaves = get_leaves(self.commits)
-    self.text = rec_merge(self.leaves, self.commits)
-    diffsync.minigit_purge(self)
-    return self.text
-}
 
-diffsync.minigit_purge = function (self) {
-    each(self.commits, function (c, id) {
-        if (Object.keys(c.parents).length > 0 && self.leaves.indexOf(id) == -1) {
-            delete c.text
-        }
-    })
-}
+        var id = guid()
+        self.commits[id] = c
+        self.calc_children()
+        self.leaves = {}
+        self.leaves[id] = true
+        self.commit_cache[id] = s
+        self.cache = s
+        self.purge_cache()
 
-function get_text(me, commits) {
-    if (commits[me].text != null) return commits[me].text
+        var cs = {}
+        cs[id] = c
+        return cs
+    }
 
-    var frontier = [me]
-    var back_pointers = {}
-    back_pointers[me] = me
-    while (true) {
-        var next = frontier.shift()
-        if (!next) { return null }
-        var c = commits[next]
+    self.merge = function (cs) {
+        each(cs, function (c, id) {
+            if (!self.commits[id]) {
+                self.commits[id] = c
+            } else {
+                if (c.text) self.commits[id].text = c.text
+                extend(self.commits[id].to_parents, c.to_parents)
+                extend(self.commits[id].from_parents, c.from_parents)
+            }
+        })
+        self.calc_children()
+        self.leaves = self.get_leaves()
+        self.cache = self.rec_merge(self.leaves)
+        self.purge_cache()
+        return self.cache
+    }
 
-        if (c.text) {
-            var snowball = c.text
-            while (true) {
-                var next = back_pointers[next]
-                var d = c.parents[next] || c.children[next]
-                snowball = apply_diff_patch(snowball, d)
-                var c = commits[next]
-                if (next == me) {
-                    return c.text = snowball
+    self.calc_children = function () {
+        self.to_children = {}
+        each(self.commits, function (c, id) {
+            self.to_children[id] = {}
+        })
+        each(self.commits, function (c, id) {
+            each(c.from_parents, function (d, p_id) {
+                self.to_children[p_id][id] = d
+            })
+        })
+    }
+
+    self.purge_cache = function () {
+        each(self.commits, function (c, id) {
+            if (Object.keys(c.to_parents).length > 0 && !self.leaves[id]) {
+                delete self.commit_cache[id]
+            }
+        })
+    }
+
+    self.get_text = function (id) {
+        if (self.commit_cache[id] != null) return self.commit_cache[id]
+
+        var frontier = [id]
+        var back_pointers = {}
+        back_pointers[id] = id
+        while (true) {
+            var next = frontier.shift()
+
+            if (!next) { return null }
+            var c_id = next
+            var c = self.commits[c_id]
+            var text = (c.text != null) ? c.text : self.commit_cache[c_id]
+            if (text != null) {
+                var snowball = text
+                while (true) {
+                    if (next == id) {
+                        return self.commit_cache[id] = snowball
+                    }
+                    next = back_pointers[next]
+                    snowball = apply_diff_patch(snowball, c.to_parents[next] || self.to_children[c_id][next])
+                    c_id = next
+                    c = self.commits[c_id]
                 }
             }
+
+            each(c.to_parents, function (_, id) {
+                if (!back_pointers[id]) {
+                    back_pointers[id] = next
+                    frontier.push(id)
+                }
+            })
+            each(self.to_children[c_id], function (_, id) {
+                if (!back_pointers[id]) {
+                    back_pointers[id] = next
+                    frontier.push(id)
+                }
+            })
         }
-
-        each(c.parents, function (d, id) {
-            if (!back_pointers[id]) {
-                back_pointers[id] = next
-                frontier.push(id)
-            }
-        })
-        each(c.children, function (d, id) {
-            if (!back_pointers[id]) {
-                back_pointers[id] = next
-                frontier.push(id)
-            }
-        })
     }
-}
-diffsync.get_text = get_text
 
-function rec_merge(these, commits) {
-    if (these.length == 0) { return '' }
-    var r = get_text(these[0], commits)
-    if (these.length == 1) { return r }
-    var r_ancestors = get_ancestors(these[0], commits)
-    for (var i = 1; i < these.length; i++) {
-        var i_ancestors = get_ancestors(these[i], commits)
-        var o = rec_merge(get_leaves(intersection(r_ancestors, i_ancestors)), commits)
-        r = apply_diff_patch(o, get_merged_diff_patch(r, get_text(these[i], commits), o))
-        
-        extend(r_ancestors, i_ancestors)
+    self.rec_merge = function (these) {
+        these = Object.keys(these)
+        if (these.length == 0) { return '' }
+        var r = self.get_text(these[0])
+        if (these.length == 1) { return r }
+        var r_ancestors = self.get_ancestors(these[0])
+        for (var i = 1; i < these.length; i++) {
+            var i_ancestors = self.get_ancestors(these[i])
+            var o = self.rec_merge(self.get_leaves(intersection(r_ancestors, i_ancestors)))
+            r = apply_diff_patch(o, get_merged_diff_patch(r, self.get_text(these[i]), o))
+            extend(r_ancestors, i_ancestors)
+        }
+        return r
     }
-    return r
-}
 
-function get_leaves(commits) {
-    var leaves = {}
-    each(commits, function (_, x) { leaves[x] = true })
-    each(commits, function (x) {
-        each(x.parents, function (_, p) {
-            delete leaves[p]
+    self.get_leaves = function (commits) {
+        if (!commits) commits = self.commits
+        var leaves = {}
+        each(commits, function (_, id) { leaves[id] = true })
+        each(commits, function (c) {
+            each(c.to_parents, function (_, p) {
+                delete leaves[p]
+            })
         })
-    })
-    return Object.keys(leaves)
-}
-
-function get_ancestors(x, commits) {
-    var ancestors = {}
-    var frontier = [x]
-    while (frontier.length > 0) {
-        var next = frontier.shift()
-        each(commits[next].parents, function (_, p) {
-            if (!ancestors[p]) {
-                ancestors[p] = commits[p]
-                frontier.push(p)
-            }
-        })
+        return leaves
     }
-    return ancestors
+
+    self.get_ancestors = function (id_or_set) {
+        var frontier = null
+        if (typeof(id_or_set) == 'object') {
+            frontier = Object.keys(id_or_set)
+        } else {
+            frontier = [id_or_set]
+        }
+        var ancestors = {}
+        while (frontier.length > 0) {
+            var next = frontier.shift()
+            each(self.commits[next].to_parents, function (_, p) {
+                if (!ancestors[p]) {
+                    ancestors[p] = self.commits[p]
+                    frontier.push(p)
+                }
+            })
+        }
+        return ancestors
+    }
+
+    return self
 }
 
 ///////////////
@@ -299,6 +562,7 @@ function map_array(a, f) {
 
 function extend(a, b) {
     each(b, function (x, key) { a[key] = x })
+    return a
 }
 
 function intersection(a, b) {
