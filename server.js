@@ -10,14 +10,22 @@ for (var key in bus.cache) {
     if (!bus.cache.hasOwnProperty(key)) { continue }
     var o = bus.cache[key]
     if (key.startsWith('commit/')) {
-        if (!channels[o.channel])
-            channels[o.channel] = { commits : {}, members : {} }
-        channels[o.channel].commits[o.id] = o.commit
+        if (o.commit.delete_me) {
+            bus.del(key)
+        } else {
+            if (!channels[o.channel])
+                channels[o.channel] = { commits : {}, members : {} }
+            channels[o.channel].commits[o.id] = o.commit
+        }
     }
     if (key.startsWith('member/')) {
-        if (!channels[o.channel])
-            channels[o.channel] = { commits : {}, members : {} }
-        channels[o.channel].members[o.id] = o.member
+        if (o.member.delete_me) {
+            bus.del(key)
+        } else {
+            if (!channels[o.channel])
+                channels[o.channel] = { commits : {}, members : {} }
+            channels[o.channel].members[o.id] = o.member
+        }
     }
 }
 
@@ -49,32 +57,28 @@ var diff_server = diffsync.create_server({
 
             var c = changes.commits[id]
             var key = 'commit/' + id
-            if (c) {
-                bus.save({
-                    key : key,
-                    id : id,
-                    channel : changes.channel,
-                    commit : c
-                })
-            } else {
+            bus.save({
+                key : key,
+                id : id,
+                channel : changes.channel,
+                commit : c
+            })
+            if (c.delete_me)
                 bus.del(key)
-            }
         }
         for (var id in changes.members) {
             if (!changes.members.hasOwnProperty(id)) { continue }
 
             var m = changes.members[id]
             var key = 'member/' + id + '/of/' + changes.channel
-            if (m) {
-                bus.save({
-                    key : key,
-                    id : id,
-                    channel : changes.channel,
-                    member : m
-                })
-            } else {
+            bus.save({
+                key : key,
+                id : id,
+                channel : changes.channel,
+                member : m
+            })
+            if (m.delete_me)
                 bus.del(key)
-            }
         }
     }
 })

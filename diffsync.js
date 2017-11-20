@@ -294,8 +294,9 @@ diffsync.create_server = function (options) {
             if (o.range)
                 send_to_all_but_me(message)
             if (o.close) {
+                channel.members[uid].delete_me = true
+                changes.members[uid] = channel.members[uid]
                 delete channel.members[uid]
-                changes.members[uid] = null
             }
 
             if (options.on_change) options.on_change(changes)
@@ -351,7 +352,8 @@ diffsync.create_minigit = function () {
             delete self.commit_cache[id]
             delete c.to_parents[id]
             delete c.from_parents[id]
-            affected[id] = null
+            being_removed.delete_me = true
+            affected[id] = being_removed
 
             each(being_removed.to_parents, function (_, id) {
                 c.to_parents[id] = get_diff_patch(self.get_text(c_id), self.get_text(id))
