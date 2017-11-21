@@ -124,6 +124,12 @@ diffsync.create_client = function (options) {
 
                 send({ leaves : minigit.leaves })
             }
+            if (o.may_delete) {
+                each(o.may_delete, function (_, id) {
+                    delete unacknowledged_commits[id]
+                    minigit.remove(id)
+                })
+            }
             if (o.range && options.on_range) options.on_range(o.range)
         }
 
@@ -282,20 +288,35 @@ diffsync.create_server = function (options) {
                 each(channel.minigit.get_ancestors(o.leaves), function (_, id) {
                     delete channel.members[uid].do_not_delete[id]
                 })
-                changes.members[uid] = channel.members[uid]
 
                 var necessary = {}
                 each(channel.members, function (m) {
                     extend(necessary, m.do_not_delete)
                 })
 
-                extend(changes.commits, channel.minigit.remove_unnecessary(necessary))
+                var affected = channel.minigit.remove_unnecessary(necessary)
+                extend(changes.commits, affected)
+
+                var new_message = {
+                    channel : channel.name,
+                    may_delete : {}
+                }
+                each(affected, function (c, id) {
+                    if (c.delete_me) {
+                        new_message.may_delete[id] = true
+                    }
+                })
+                if (Object.keys(new_message.may_delete).length > 0) {
+                    new_message = JSON.stringify(new_message)
+                    each(channel.members, function (m, them) {
+                        try_send(users_to_sockets[them], new_message)
+                    })
+                }
             }
             if (o.range)
                 send_to_all_but_me(message)
             if (o.close) {
                 channel.members[uid].delete_me = true
-                changes.members[uid] = channel.members[uid]
                 delete channel.members[uid]
             }
 
