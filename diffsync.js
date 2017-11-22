@@ -40,8 +40,10 @@ diffsync.create_client = function (options) {
     window.addEventListener('beforeunload', function () {
         if (self.on_window_closing) self.on_window_closing()
     })
-    
+
+    var connected = false
     function reconnect() {
+        connected = false
         console.log('connecting...')
         var ws = new WebSocket(options.ws_url)
 
@@ -59,6 +61,7 @@ diffsync.create_client = function (options) {
         }
     
         ws.onopen = function () {
+            connected = true
             send({ join : true })
             on_pong()
         }
@@ -134,6 +137,7 @@ diffsync.create_client = function (options) {
         }
 
         self.on_change = function () {
+            if (!connected) { return }
             var cs = minigit.commit(options.get_text())
             if (cs) {
                 extend(unacknowledged_commits, cs)
