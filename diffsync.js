@@ -32,6 +32,9 @@ diffsync.create_client = function (options) {
     self.on_change = null
     self.update_range = null
     self.on_window_closing = null
+    self.get_channels = null
+
+    var on_channels = null
 
     var uid = guid()
     var minigit = diffsync.create_minigit()
@@ -58,6 +61,11 @@ diffsync.create_client = function (options) {
 
         self.on_window_closing = function () {
             send({ close : true })
+        }
+
+        self.get_channels = function (cb) {
+            on_channels = cb
+            send({ get_channels : true })
         }
     
         ws.onopen = function () {
@@ -98,6 +106,9 @@ diffsync.create_client = function (options) {
 
             console.log('message: ' + event.data)
 
+            if (o.channels) {
+                if (on_channels) on_channels(o.channels)
+            }
             if (o.commits) {
                 self.on_change()
                 minigit.merge(o.commits)
@@ -254,6 +265,9 @@ diffsync.create_server = function (options) {
                 })
             }
 
+            if (o.get_channels) {
+                try_send(ws, JSON.stringify({ channels : Object.keys(self.channels) }))
+            }
             if (o.join) {
                 try_send(ws, JSON.stringify({ commits : channel.minigit.commits, welcome : true }))
             }
