@@ -144,7 +144,7 @@ diffsync.create_client = function (options) {
                     minigit.remove(id)
                 })
             }
-            if (o.range && options.on_range) options.on_range(o.range)
+            if (o.range && options.on_range) options.on_range(o)
         }
 
         self.on_change = function () {
