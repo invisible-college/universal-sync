@@ -395,8 +395,9 @@ diffsync.create_minigit = function () {
             affected[id] = being_removed
 
             each(being_removed.to_parents, function (_, id) {
-                c.to_parents[id] = get_diff_patch(self.get_text(c_id), self.get_text(id))
-                c.from_parents[id] = get_diff_patch(self.get_text(id), self.get_text(c_id))
+                var x = get_diff_patch_2(self.get_text(c_id), self.get_text(id))
+                c.to_parents[id] = x[0]
+                c.from_parents[id] = x[1]
             })
             if (Object.keys(c.to_parents).length == 0) {
                 c.text = self.get_text(c_id)
@@ -420,8 +421,9 @@ diffsync.create_minigit = function () {
             c.text = s
         } else {
             each(self.leaves, function (_, leaf) {
-                c.to_parents[leaf] = get_diff_patch(s, self.get_text(leaf))
-                c.from_parents[leaf] = get_diff_patch(self.get_text(leaf), s)
+                var x = get_diff_patch_2(s, self.get_text(leaf))
+                c.to_parents[leaf] = x[0]
+                c.from_parents[leaf] = x[1]
             })
         }
 
@@ -662,7 +664,8 @@ function apply_diff_patch(s, diff) {
     return s
 }
 
-function diff_convert_to_my_format(d) {
+function diff_convert_to_my_format(d, factor) {
+    if (factor === undefined) factor = 1
     var x = []
     var ii = 0
     for (var i = 0; i < d.length; i++) {
@@ -672,18 +675,18 @@ function diff_convert_to_my_format(d) {
             continue
         }
         var xx = [ii, 0, '']
-        if (dd[0] == DIFF_INSERT) {
+        if (dd[0] == DIFF_INSERT * factor) {
             xx[2] = dd[1]
-        } else if (dd[0] == DIFF_DELETE) {
+        } else if (dd[0] == DIFF_DELETE * factor) {
             xx[1] = dd[1].length
             ii += xx[1]
         }
         if (i + 1 < d.length) {
             dd = d[i + 1]
             if (dd[0] != DIFF_EQUAL) {
-                if (dd[0] == DIFF_INSERT) {
+                if (dd[0] == DIFF_INSERT * factor) {
                     xx[2] = dd[1]
-                } else if (dd[0] == DIFF_DELETE) {
+                } else if (dd[0] == DIFF_DELETE * factor) {
                     xx[1] = dd[1].length
                     ii += xx[1]
                 }
@@ -699,7 +702,14 @@ function get_diff_patch(a, b) {
     return diff_convert_to_my_format(diff_main(a, b))
 }
 
+function get_diff_patch_2(a, b) {
+    var x = diff_main(a, b)
+    return [diff_convert_to_my_format(x),
+        diff_convert_to_my_format(x, -1)]
+}
+
 diffsync.get_diff_patch = get_diff_patch
+diffsync.get_diff_patch_2 = get_diff_patch_2
 
 /**
  * This library modifies the diff-patch-match library by Neil Fraser
@@ -732,9 +742,9 @@ diffsync.get_diff_patch = get_diff_patch
  * [[DIFF_DELETE, 'Hello'], [DIFF_INSERT, 'Goodbye'], [DIFF_EQUAL, ' world.']]
  * which means: delete 'Hello', add 'Goodbye' and keep ' world.'
  */
-// var DIFF_DELETE = -1;
-// var DIFF_INSERT = 1;
-// var DIFF_EQUAL = 0;
+var DIFF_DELETE = -1;
+var DIFF_INSERT = 1;
+var DIFF_EQUAL = 0;
 
 
 /**
