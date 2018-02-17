@@ -1,0 +1,92 @@
+
+<body>
+<script src="automerge.js"></script>
+<script src="https://dglittle.github.io/cdn/diff001.js"></script>
+<script>
+
+var output = document.createElement('textarea')
+output.style.position = 'fixed'
+output.style.left = '0px'
+output.style.top = '50%'
+output.style.width = '100%'
+output.style.height = '50%'
+document.body.append(output)
+
+function print(s) {
+	output.value = output.value + s + '\n'
+}
+
+function create_peer(arrow) {
+    var self = {}
+
+    self.ds = new Automerge.DocSet()
+    self.c = new Automerge.Connection(self.ds, function (x) {
+        print('MESSAGE! ' + arrow)
+        print(JSON.stringify(x, null, '    '))
+
+        self.other.c.receiveMsg(x)
+        self.other.t.value = (self.other.ds.getDoc('doc').a || []).join('')
+    })
+    self.c.open()
+    self.on_change = function () {
+        if (!self.ds.getDoc('doc')) {
+            self.ds.setDoc('doc', Automerge.init())
+        }
+
+        var automerge_text = (self.ds.getDoc('doc').a || []).join('')
+        var textarea_text = self.t.value
+        var patch = diff(automerge_text, textarea_text)
+
+        var d = Automerge.change(self.ds.getDoc('doc'), 'bloop', doc => {
+            if (!doc.a)
+                doc.a = new Automerge.Text()
+
+            var offset = 0
+            for (var i = 0; i < patch.length; i++) {
+            	var p = patch[i]
+            	if (p[0] == 0) {
+            		offset += p[1]
+            	} else if (p[0] == 1) {
+            		for (var ii = 0; ii < p[1].length; ii++) {
+            			doc.a.insertAt(offset++, p[1][ii])
+            		}
+            	} else {
+            		for (var ii = 0; ii < p[1].length; ii++) {
+            			doc.a.deleteAt(offset)
+            		}
+            	}
+            }
+        })
+        var changes = Automerge.getChanges(self.ds.getDoc('doc'), d)
+
+        if (changes[0].ops.length > 0)
+        	self.ds.applyChanges('doc', Automerge.fromJS(changes))
+    }
+
+	self.t = document.createElement('textarea')
+	self.t.style.position = 'fixed'
+	self.t.style.left = '0px'
+	self.t.style.top = '0px'
+	self.t.style.width = '50%'
+	self.t.style.height = '50%'
+	self.t.onkeyup = function () {
+	    self.on_change()
+	}
+	self.t.onpaste = function () {
+	    setTimeout(function () {
+	        self.on_change()
+	    }, 0)
+	}
+	document.body.append(self.t)
+
+    return self
+}
+
+var a = create_peer('->')
+var b = create_peer('<-')
+b.t.style.left = '50%'
+a.other = b
+b.other = a
+
+</script>
+</body>
