@@ -487,7 +487,7 @@ diffsync.create_minigit = function () {
         while (true) {
             var next = frontier.shift()
 
-            if (!next) { return '' }
+            if (!next) { throw 'data structure corrupted' }
             var c_id = next
             var c = self.commits[c_id]
             var text = (c.text != null) ? c.text : self.commit_cache[c_id]
