@@ -17,15 +17,17 @@ diffsync.port = 60607
 //         current_text_displayed_to_user = text
 //         set_selection(range[0], range[1])
 //     },
-//     on_range : function (other_users_range_info) {
-//         // the parameter comes from what you pass to diffsync_client.update_range(x)
+//     on_range : function (x) {
+// .       show_range(x.range)
+// .       // this is called when a peer calls diffsync_client.update_range(),
+//         // and x.range comes from that peer's diffsync_client.get_range()
 //     }
 // }
 //
 // returns an object with a couple methods:
 // var client = diffsync.create_client({...})
 // client.on_change() <-- call this when the user changes the text
-// client.update_range({ your_own : 'data' }) <-- this will cause other clients' on_range handlers to get called with { your_own : 'data' } as a parameter
+// client.update_range() <-- call this when the user changes the cursor location or selection range
 //
 diffsync.create_client = function (options) {
     var self = {}
