@@ -18,9 +18,10 @@ diffsync.port = 60607
 //         set_selection(range[0], range[1])
 //     },
 //     on_range : function (x) {
-// .       show_range(x.range)
+// .       show_range(x.uid, x.range)
 // .       // this is called when a peer calls diffsync_client.update_range(),
-//         // and x.range comes from that peer's diffsync_client.get_range()
+//         // where x.uid will be a string you can use to distinquish this peer,
+//         // and x.range comes from the peer's diffsync_client.get_range()
 //     }
 // }
 //
