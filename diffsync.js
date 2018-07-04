@@ -4,7 +4,7 @@ var diffsync = (typeof(module) != 'undefined') ? module.exports : {}
 diffsync.version = 1039
 diffsync.port = 60607
 
-// options is an object like this: {
+// var client = diffsync.create_client({
 //     ws_url : 'ws://invisible.college:' + diffsync.port,
 //     channel : 'the_cool_room',
 //     get_text : function () {
@@ -17,23 +17,18 @@ diffsync.port = 60607
 //         current_text_displayed_to_user = text
 //         set_selection(range[0], range[1])
 //     },
-//     on_range : function (x) {
-// .       show_range(x.uid, x.range)
-// .       // this is called when a peer calls diffsync_client.update_range(),
-//         // where x.uid will be a string you can use to distinquish this peer,
-//         // and x.range comes from the peer's diffsync_client.get_range()
+//     on_ranges : function (peer_ranges) {
+//.        for (peer in peer_ranges) {
+//             set_peer_selection(peer_ranges[peer][0], peer_ranges[peer][1])
+//         }
 //     }
-// }
+// })
 //
-// returns an object with a couple methods:
-// var client = diffsync.create_client({...})
-// client.on_change() <-- call this when the user changes the text
-// client.update_range() <-- call this when the user changes the cursor location or selection range
+// client.on_change() <-- call this when the user changes the text or cursor/selection position
 //
 diffsync.create_client = function (options) {
     var self = {}
     self.on_change = null
-    self.update_range = null
     self.on_window_closing = null
     self.get_channels = null
 
@@ -42,6 +37,9 @@ diffsync.create_client = function (options) {
     var uid = guid()
     var minigit = diffsync.create_minigit()
     var unacknowledged_commits = {}
+
+    var prev_range = [-1, -1]
+    var peer_ranges = {}
 
     window.addEventListener('beforeunload', function () {
         if (self.on_window_closing) self.on_window_closing()
@@ -101,6 +99,21 @@ diffsync.create_client = function (options) {
         }
 
         var sent_unacknowledged_commits = false
+
+        function adjust_range(range, patch) {
+            return map_array(range, function (x) {
+                each(patch, function (p) {
+                    if (p[0] < x) {
+                        if (p[0] + p[1] <= x) {
+                            x += -p[1] + p[2].length
+                        } else {
+                            x = p[0] + p[2].length
+                        }
+                    } else return false
+                })
+                return x
+            })
+        }
     
         ws.onmessage = function (event) {
             if (!ws) { return }
@@ -115,19 +128,14 @@ diffsync.create_client = function (options) {
             if (o.commits) {
                 self.on_change()
                 minigit.merge(o.commits)
+
                 var patch = get_diff_patch(options.get_text(), minigit.cache)
-                options.on_text(minigit.cache, map_array(options.get_range(), function (x) {
-                    each(patch, function (p) {
-                        if (p[0] < x) {
-                            if (p[0] + p[1] <= x) {
-                                x += -p[1] + p[2].length
-                            } else {
-                                x = p[0] + p[2].length
-                            }
-                        } else return false
-                    })
-                    return x
-                }))
+                each(peer_ranges, function (range, peer) {
+                    peer_ranges[peer] = adjust_range(range, patch)
+                })
+
+                prev_range = adjust_range(options.get_range(), patch)
+                options.on_text(minigit.cache, prev_range)
 
                 if (o.welcome) {
                     each(extend(o.commits, minigit.get_ancestors(o.commits)), function (_, id) {
@@ -147,22 +155,47 @@ diffsync.create_client = function (options) {
                     minigit.remove(id)
                 })
             }
-            if (o.range && options.on_range) options.on_range(o)
+            if (o.range) {
+                peer_ranges[o.uid] = o.range
+            }
+            if ((o.range || o.commits) && options.on_ranges) {
+                options.on_ranges(peer_ranges)
+            }
         }
 
         self.on_change = function () {
             if (!connected) { return }
+
+            var old_cache = minigit.cache
             var cs = minigit.commit(options.get_text())
             if (cs) {
                 extend(unacknowledged_commits, cs)
-                if (sent_unacknowledged_commits) {
-                    send({ commits : cs })
-                }
+
+                var patch = null
+                var c = cs[Object.keys(cs)[0]]
+                var parents = Object.keys(c.from_parents)
+                if (parents.length == 1)
+                    patch = c.from_parents[parents[0]]
+                else
+                    patch = get_diff_patch(old_cache, minigit.cache)
+
+                each(peer_ranges, function (range, peer) {
+                    peer_ranges[peer] = adjust_range(range, patch)
+                })
+                options.on_ranges(peer_ranges)
             }
-        }
-        
-        self.update_range = function () {
-            send({ range : options.get_range() })
+
+            if (!sent_unacknowledged_commits) { return }
+
+            var range = options.get_range()
+            var range_changed = (range[0] != prev_range[0]) || (range[1] != prev_range[1])
+            prev_range = range
+
+            var msg = {}
+            if (cs) msg.commits = cs
+
+            if (range_changed) msg.range = range
+            if (cs || range_changed) send(msg)
         }
     }
     reconnect()
@@ -238,6 +271,14 @@ diffsync.create_server = function (options) {
             })
         })
 
+        ws.on('error', function () {
+            each(users_to_sockets, function (_ws, uid) {
+                if (_ws == ws) {
+                    delete users_to_sockets[uid]
+                }
+            })
+        })
+
         ws.on('message', function (message) {
             var o = JSON.parse(message)
             if (o.v != diffsync.version) { return }
@@ -284,10 +325,16 @@ diffsync.create_server = function (options) {
                 })
                 channel.minigit.merge(new_commits)
 
-                var new_message = JSON.stringify({
+                var new_message = {
                     channel : channel.name,
                     commits : new_commits
-                })
+                }
+                if (o.range) {
+                    new_message.uid = o.uid
+                    new_message.range = o.range
+                }
+                new_message = JSON.stringify(new_message)
+
                 leaves = channel.minigit.get_leaves(new_commits)
                 var now = Date.now()
                 each(channel.members, function (m, them) {
@@ -303,6 +350,8 @@ diffsync.create_server = function (options) {
                     }
                 })
                 if (!o.leaves) o.leaves = channel.minigit.get_leaves(o.commits)
+            } else if (o.range) {
+                send_to_all_but_me(message)
             }
             if (o.leaves) {
                 extend(channel.members[uid].do_not_delete, o.leaves)
@@ -334,8 +383,6 @@ diffsync.create_server = function (options) {
                     })
                 }
             }
-            if (o.range)
-                send_to_all_but_me(message)
             if (o.close) {
                 channel.members[uid].delete_me = true
                 delete channel.members[uid]
