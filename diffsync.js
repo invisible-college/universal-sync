@@ -182,7 +182,7 @@ diffsync.create_client = function (options) {
                 each(peer_ranges, function (range, peer) {
                     peer_ranges[peer] = adjust_range(range, patch)
                 })
-                options.on_ranges(peer_ranges)
+                if (options.on_ranges) options.on_ranges(peer_ranges)
             }
 
             if (!sent_unacknowledged_commits) { return }
