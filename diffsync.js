@@ -61,7 +61,10 @@ diffsync.create_client = function (options) {
         }
 
         self.on_window_closing = function () {
-            send({ close : true })
+            send({
+                range : [],
+                close : true
+            })
         }
 
         self.get_channels = function (cb) {
@@ -156,7 +159,11 @@ diffsync.create_client = function (options) {
                 })
             }
             if (o.range) {
-                peer_ranges[o.uid] = o.range
+                if (o.range.length == 2) {
+                    peer_ranges[o.uid] = o.range
+                } else {
+                    delete peer_ranges[o.uid]
+                }                
             }
             if ((o.range || o.commits) && options.on_ranges) {
                 options.on_ranges(peer_ranges)
