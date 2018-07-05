@@ -61,10 +61,7 @@ diffsync.create_client = function (options) {
         }
 
         self.on_window_closing = function () {
-            send({
-                range : [],
-                close : true
-            })
+            send({ close : true })
         }
 
         self.get_channels = function (cb) {
@@ -159,11 +156,10 @@ diffsync.create_client = function (options) {
                 })
             }
             if (o.range) {
-                if (o.range.length == 2) {
-                    peer_ranges[o.uid] = o.range
-                } else {
-                    delete peer_ranges[o.uid]
-                }                
+                peer_ranges[o.uid] = o.range
+            }
+            if (o.close) {
+                delete peer_ranges[o.uid]
             }
             if ((o.range || o.commits) && options.on_ranges) {
                 options.on_ranges(peer_ranges)
@@ -270,21 +266,25 @@ diffsync.create_server = function (options) {
     options.wss.on('connection', function connection(ws) {
         console.log('new connection')
 
-        ws.on('close', function () {
+        function myClose() {
             each(users_to_sockets, function (_ws, uid) {
                 if (_ws == ws) {
                     delete users_to_sockets[uid]
+                } else {
+                    try {
+                        _ws.send(JSON.stringify({
+                            v : diffsync.version,
+                            uid : uid,
+                            channel : options.channel,
+                            close : true
+                        }))
+                    } catch (e) {}
                 }
             })
-        })
+        }
 
-        ws.on('error', function () {
-            each(users_to_sockets, function (_ws, uid) {
-                if (_ws == ws) {
-                    delete users_to_sockets[uid]
-                }
-            })
-        })
+        ws.on('close', myClose)
+        ws.on('error', myClose)
 
         ws.on('message', function (message) {
             var o = JSON.parse(message)
