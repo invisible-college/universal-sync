@@ -266,6 +266,7 @@ diffsync.create_server = function (options) {
     options.wss.on('connection', function connection(ws) {
         console.log('new connection')
         var uid = null
+        var channel = null
 
         function myClose() {
             if (!uid) { return }
@@ -275,7 +276,7 @@ diffsync.create_server = function (options) {
                     _ws.send(JSON.stringify({
                         v : diffsync.version,
                         uid : uid,
-                        channel : options.channel,
+                        channel : channel,
                         close : true
                     }))
                 } catch (e) {}
@@ -293,9 +294,9 @@ diffsync.create_server = function (options) {
             console.log('message: ' + message)
 
             uid = o.uid
+            channel = get_channel(o.channel)
             users_to_sockets[uid] = ws
-
-            var channel = get_channel(o.channel)
+            
             var changes = { channel : channel.name, commits : {}, members : {} }
 
             if (!channel.members[uid]) channel.members[uid] = { do_not_delete : {}, last_sent : 0 }
