@@ -161,7 +161,7 @@ diffsync.create_client = function (options) {
             if (o.close) {
                 delete peer_ranges[o.uid]
             }
-            if ((o.range || o.commits) && options.on_ranges) {
+            if ((o.range || o.close || o.commits) && options.on_ranges) {
                 options.on_ranges(peer_ranges)
             }
         }
