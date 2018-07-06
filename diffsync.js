@@ -265,21 +265,20 @@ diffsync.create_server = function (options) {
 
     options.wss.on('connection', function connection(ws) {
         console.log('new connection')
+        var uid = null
 
         function myClose() {
-            each(users_to_sockets, function (_ws, uid) {
-                if (_ws == ws) {
-                    delete users_to_sockets[uid]
-                } else {
-                    try {
-                        _ws.send(JSON.stringify({
-                            v : diffsync.version,
-                            uid : uid,
-                            channel : options.channel,
-                            close : true
-                        }))
-                    } catch (e) {}
-                }
+            if (!uid) { return }
+            delete users_to_sockets[uid]
+            each(users_to_sockets, function (_ws, _uid) {
+                try {
+                    _ws.send(JSON.stringify({
+                        v : diffsync.version,
+                        uid : uid,
+                        channel : options.channel,
+                        close : true
+                    }))
+                } catch (e) {}
             })
         }
 
@@ -293,7 +292,7 @@ diffsync.create_server = function (options) {
 
             console.log('message: ' + message)
 
-            var uid = o.uid
+            uid = o.uid
             users_to_sockets[uid] = ws
 
             var channel = get_channel(o.channel)
