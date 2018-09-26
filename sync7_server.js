@@ -21,6 +21,6 @@ console.log('openning ' + server_type + ' server on port ' + port)
 var WebSocket = require('ws')
 var wss = new WebSocket.Server({ server : web_server })
 
-diffsync.create_server({
+sync7.create_server({
     wss : wss
 })
