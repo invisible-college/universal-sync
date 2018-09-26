@@ -676,7 +676,7 @@ var sync7 = (typeof(module) != 'undefined') ? module.exports : {}
                     cursor[1] = kid
                 }
             }
-        }
+        })
     }
 
     function default_custom_merge_func(s7, a, b, a_text, b_text, a_regions, b_regions) {
