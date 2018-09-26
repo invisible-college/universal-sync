@@ -642,40 +642,41 @@ var sync7 = (typeof(module) != 'undefined') ? module.exports : {}
     
         s7.leaf = prev_merge_node
         s7.text = texts[prev_merge_node]
-    
-        while (cursor_projection_node != s7.leaf) {
-            var old_node = cursor_projection_node
-            var kids = s7.commits[cursor_projection_node].from_kids
-            var kid = Object.keys(kids)[0]
-            var d = kids[kid]
-            
-            var offset = 0
-            var poffset = 0
-            each(d, function (d) {
-                if (typeof(d) == 'number') {
-                    if (cursor_projection_offset <= poffset + d) {
-                        cursor_projection_offset = cursor_projection_offset - poffset + offset
-                        cursor_projection_node = kid
-                        return false
+        
+        return projected_cursors.map(function (cursor) {
+            while (cursor[1] != s7.leaf) {
+                var old_node = cursor[1]
+                var kids = s7.commits[cursor[1]].from_kids
+                var kid = Object.keys(kids)[0]
+                var d = kids[kid]
+
+                var offset = 0
+                var poffset = 0
+                each(d, function (d) {
+                    if (typeof(d) == 'number') {
+                        if (cursor[0] <= poffset + d) {
+                            cursor[0] = cursor[0] - poffset + offset
+                            cursor[1] = kid
+                            return false
+                        }
+                        offset += d
+                        poffset += d
+                    } else {
+                        if (cursor[0] <= poffset + d[1].length) {
+                            cursor[0] = offset
+                            cursor[1] = kid
+                            return false
+                        }
+                        offset += d[0].length
+                        poffset += d[1].length
                     }
-                    offset += d
-                    poffset += d
-                } else {
-                    if (cursor_projection_offset <= poffset + d[1].length) {
-                        cursor_projection_offset = offset
-                        cursor_projection_node = kid
-                        return false
-                    }
-                    offset += d[0].length
-                    poffset += d[1].length
+                })
+                if (cursor[1] == old_node) {
+                    cursor[0] = offset
+                    cursor[1] = kid
                 }
-            })
-            if (cursor_projection_node == old_node) {
-                cursor_projection_offset = offset
-                cursor_projection_node = kid
             }
         }
-        return cursor_projection_offset
     }
 
     function default_custom_merge_func(s7, a, b, a_text, b_text, a_regions, b_regions) {
