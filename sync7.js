@@ -3,7 +3,7 @@ var sync7 = (typeof(module) != 'undefined') ? module.exports : {}
 ;(function () {
 
     sync7.version = 1001
-    sync7.port = 70407
+    sync7.port = 40704
     
     // var client = sync7.create_client({
     //     ws_url : 'ws://invisible.college:' + sync7.port,
