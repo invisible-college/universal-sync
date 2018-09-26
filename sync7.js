@@ -282,6 +282,7 @@ var sync7 = (typeof(module) != 'undefined') ? module.exports : {}
     }
 
     sync7.merge = function (s7, cs, cursors, custom_merge_func) {
+        if (!cursors) cursors = {}
         if (!custom_merge_func) custom_merge_func = default_custom_merge_func
         var projected_cursors = cursors.map(function (cursor) {
             var node = s7.leaf
