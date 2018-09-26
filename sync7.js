@@ -284,7 +284,7 @@ var sync7 = (typeof(module) != 'undefined') ? module.exports : {}
     sync7.merge = function (s7, cs, cursors, custom_merge_func) {
         if (!cursors) cursors = {}
         if (!custom_merge_func) custom_merge_func = default_custom_merge_func
-        var projected_cursors = cursors.map(function (cursor) {
+        var projected_cursors = map(cursors, function (cursor) {
             var node = s7.leaf
             while (s7.temp_commits[node]) {
                 var old_node = node
@@ -644,7 +644,7 @@ var sync7 = (typeof(module) != 'undefined') ? module.exports : {}
         s7.leaf = prev_merge_node
         s7.text = texts[prev_merge_node]
         
-        return projected_cursors.map(function (cursor) {
+        return map(projected_cursors, function (cursor) {
             while (cursor[1] != s7.leaf) {
                 var old_node = cursor[1]
                 var kids = s7.commits[cursor[1]].from_kids
@@ -677,6 +677,7 @@ var sync7 = (typeof(module) != 'undefined') ? module.exports : {}
                     cursor[1] = kid
                 }
             }
+            return cursor[0]
         })
     }
 
