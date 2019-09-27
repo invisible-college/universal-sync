@@ -94,7 +94,7 @@ diffsync.create_client = function (options) {
             console.log('connection closed...')
             if (ws) {
                 ws = null
-                reconnect()
+                setTimeout(reconnect, 3000)
             }
         }
 
