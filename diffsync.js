@@ -31,6 +31,7 @@ diffsync.create_client = function (options) {
     self.on_change = null
     self.on_window_closing = null
     self.get_channels = null
+    options.network_broke = options.network_broke || function () {}
 
     var on_channels = null
 
@@ -72,6 +73,7 @@ diffsync.create_client = function (options) {
         ws.onopen = function () {
             connected = true
             send({ join : true })
+            options.network_broke(false)
             on_pong()
         }
     
@@ -84,6 +86,7 @@ diffsync.create_client = function (options) {
                     console.log('no pong came!!')
                     if (ws) {
                         ws = null
+                        options.network_broke(true)
                         reconnect()
                     }
                 }, 4000)
@@ -92,6 +95,7 @@ diffsync.create_client = function (options) {
 
         ws.onclose = function () {
             console.log('connection closed...')
+            options.network_broke(true)
             if (ws) {
                 ws = null
                 setTimeout(reconnect, 3000)
