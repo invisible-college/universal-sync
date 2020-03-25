@@ -171,7 +171,7 @@ diffsync.create_client = function (options) {
         }
 
         self.on_change = function () {
-            if (!connected) { return }
+            // if (!connected) { return }
 
             var old_cache = minigit.cache
             var cs = minigit.commit(options.get_text())
