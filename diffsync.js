@@ -130,7 +130,7 @@ diffsync.create_client = function (options) {
                 if (on_channels) on_channels(o.channels)
             }
             if (o.commits) {
-                self.on_change()
+                // self.on_change()
                 minigit.merge(o.commits)
 
                 var patch = get_diff_patch(options.get_text(), minigit.cache)
