@@ -74,24 +74,24 @@ diffsync.create_client = function (options) {
             connected = true
             send({ join : true })
             options.network_broke(false)
-            on_pong()
+//             on_pong()
         }
     
-        var pong_timer = null
-        function on_pong() {
-            clearTimeout(pong_timer)
-            setTimeout(function () {
-                send({ ping : true })
-                pong_timer = setTimeout(function () {
-                    console.log('no pong came!!')
-                    if (ws) {
-                        ws = null
-                        options.network_broke(true)
-                        reconnect()
-                    }
-                }, 4000)
-            }, 3000)
-        }
+//         var pong_timer = null
+//         function on_pong() {
+//             clearTimeout(pong_timer)
+//             setTimeout(function () {
+//                 send({ ping : true })
+//                 pong_timer = setTimeout(function () {
+//                     console.log('no pong came!!')
+//                     if (ws) {
+//                         ws = null
+//                         options.network_broke(true)
+//                         reconnect()
+//                     }
+//                 }, 4000)
+//             }, 3000)
+//         }
 
         ws.onclose = function () {
             console.log('connection closed...')
@@ -122,7 +122,7 @@ diffsync.create_client = function (options) {
         ws.onmessage = function (event) {
             if (!ws) { return }
             var o = JSON.parse(event.data)
-            if (o.pong) { return on_pong() }
+//             if (o.pong) { return on_pong() }
 
             console.log('message: ' + event.data)
 
