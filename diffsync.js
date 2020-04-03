@@ -226,9 +226,7 @@ diffsync.create_client = function (options) {
 //                     do_not_delete : {
 //                         'asdfasdf' : true
 //                     }
-//                 },
-//                 last_seen : 1510878755554,
-//                 last_sent : 1510878755554
+//                 }
 //             }
 //         }
 //     },
@@ -304,14 +302,14 @@ diffsync.create_server = function (options) {
             
             var changes = { channel : channel.name, commits : {}, members : {} }
 
-            if (!channel.members[uid]) channel.members[uid] = { do_not_delete : {}, last_sent : 0 }
-            channel.members[uid].last_seen = Date.now()
+            if (!channel.members[uid]) channel.members[uid] = { do_not_delete : {} }
             changes.members[uid] = channel.members[uid]
 
             function try_send(ws, message) {
                 try {
                     ws.send(message)
-                } catch (e) {}
+                } catch (e) { return false }
+                return true
             }
             function send_to_all_but_me(message) {
                 each(channel.members, function (_, them) {
@@ -351,14 +349,8 @@ diffsync.create_server = function (options) {
                 var now = Date.now()
                 each(channel.members, function (m, them) {
                     if (them != uid) {
-                        if (m.last_seen > m.last_sent) {
-                            m.last_sent = now
-                            changes.members[them] = m
-                        } else if (m.last_sent < now - 3000) {
-                            return
-                        }
-                        extend(m.do_not_delete, leaves)
-                        try_send(users_to_sockets[them], new_message)
+                        if (try_send(users_to_sockets[them], new_message))
+                            extend(m.do_not_delete, leaves)
                     }
                 })
                 if (!o.leaves) o.leaves = channel.minigit.get_leaves(o.commits)
