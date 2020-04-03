@@ -349,8 +349,10 @@ diffsync.create_server = function (options) {
                 var now = Date.now()
                 each(channel.members, function (m, them) {
                     if (them != uid) {
-                        if (try_send(users_to_sockets[them], new_message))
+                        if (try_send(users_to_sockets[them], new_message)) {
                             extend(m.do_not_delete, leaves)
+                            changes.members[them] = m
+                        }
                     }
                 })
                 if (!o.leaves) o.leaves = channel.minigit.get_leaves(o.commits)
